@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -15,7 +16,7 @@ class DrivingActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -47,6 +48,16 @@ class DrivingActivity : ComponentActivity() {
 
         webView.webChromeClient = WebChromeClient()
         webView.webViewClient = WebViewClient()
+
+        // Expose bridge to exit game safely
+        webView.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun exitGame() {
+                runOnUiThread {
+                    finish()
+                }
+            }
+        }, "Android")
 
         // Pass car info via URL fragment
         val carColor = when {

@@ -257,7 +257,7 @@
 <canvas id="c"></canvas>
 
 <div id="ui">
-  <button id="back-btn" onclick="history.back()">✕</button>
+  <button id="back-btn" onclick="exitDrivingGame()">✕</button>
   <div id="car-label">🚗 MOD: YÜKLENİYOR...</div>
   
   <div id="hud">
@@ -294,6 +294,15 @@
 </div>
 
 <script>
+// Expose exit driving game bridge function
+function exitDrivingGame() {
+  if (window.Android && typeof window.Android.exitGame === 'function') {
+    window.Android.exitGame();
+  } else {
+    history.back();
+  }
+}
+
 // Parse and decode hash strictly to prevent URL Encoding bugs like %F0...
 const hashStr = decodeURIComponent(location.hash.slice(1));
 const hash = hashStr.split(',');
