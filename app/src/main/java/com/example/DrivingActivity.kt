@@ -71,7 +71,9 @@ class DrivingActivity : ComponentActivity() {
         webView.loadUrl("file:///android_asset/driving.html#$carId,$carColor,${carName.replace(" ","_")},$lang")
     }
 
+    @Suppress("DEPRECATION", "GestureBackNavigation")
     override fun onBackPressed() {
+        super.onBackPressed()
         finish()
     }
 

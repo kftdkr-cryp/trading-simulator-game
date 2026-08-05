@@ -564,19 +564,76 @@ const guardrailMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.8
 });
 
-// Building Materials with diverse sunset shades
-const buildingMaterials = [
-  new THREE.MeshStandardMaterial({ color: 0x241a2c, roughness: 0.6, metalness: 0.5 }), // deep indigo
-  new THREE.MeshStandardMaterial({ color: 0x351829, roughness: 0.5, metalness: 0.6 }), // dark plum
-  new THREE.MeshStandardMaterial({ color: 0x16121a, roughness: 0.7, metalness: 0.4 }), // dark graphite
-  new THREE.MeshStandardMaterial({ color: 0x42212d, roughness: 0.6, metalness: 0.5 }), // burgundy
-  new THREE.MeshStandardMaterial({ color: 0x1c2135, roughness: 0.6, metalness: 0.4 })  // dark blue
+// Procedurally generated high-performance window textures (reduces draw calls from 3000+ to under 100!)
+const buildingMaterials = [];
+const colorThemes = [
+  ['#ffca28', '#ffc107', '#ffe082'], // Golden yellow
+  ['#00e5ff', '#00b0ff', '#80deea'], // Cyber cyan/blue
+  ['#ff5722', '#ff7043', '#ffab91'], // Neon orange/red
+  ['#e040fb', '#d500f9', '#ea80fc'], // Purple/pink
+  ['#00e676', '#00c853', '#b9f6ca']  // Emerald green
 ];
 
-const winLitYellow = new THREE.MeshBasicMaterial({ color: 0xffca28 });
+const buildingBaseColors = [
+  0x1b1424, // deep indigo
+  0x2a101f, // dark plum
+  0x110d14, // dark graphite
+  0x30151e, // burgundy
+  0x141829  // dark blue
+];
+
+for (let i = 0; i < 5; i++) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  
+  // Base facade background
+  ctx.fillStyle = '#110d15';
+  ctx.fillRect(0, 0, 128, 256);
+  
+  // Draw window grid pattern
+  const cols = 4;
+  const rows = 12;
+  const winW = 16;
+  const winH = 10;
+  const padX = 12;
+  const padY = 8;
+  
+  ctx.shadowBlur = 6;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const isLit = Math.random() > 0.45;
+      if (isLit) {
+        const theme = colorThemes[i];
+        ctx.fillStyle = theme[Math.floor(Math.random() * theme.length)];
+        ctx.shadowColor = ctx.fillStyle;
+      } else {
+        ctx.fillStyle = '#050306';
+        ctx.shadowColor = 'transparent';
+      }
+      ctx.fillRect(padX + c * (winW + padX), padY + r * (winH + padY), winW, winH);
+    }
+  }
+  
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  
+  const mat = new THREE.MeshStandardMaterial({
+    color: buildingBaseColors[i],
+    map: texture,
+    emissive: 0xffffff,
+    emissiveMap: texture,
+    emissiveIntensity: 1.1,
+    roughness: 0.4,
+    metalness: 0.5
+  });
+  
+  buildingMaterials.push(mat);
+}
+
 const winLitCyan = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
-const winLitOrange = new THREE.MeshBasicMaterial({ color: 0xff5722 });
-const winDark = new THREE.MeshBasicMaterial({ color: 0x09060b });
 
 const carBodyMat = new THREE.MeshStandardMaterial({
   color: 0xd50000, // Rich racing red
@@ -617,57 +674,427 @@ const streetLights = [];
 const stripes = [];
 
 
-// ── BUILD PROCEDURAL SPORTS CAR MODEL ──────────────────────────────────────────
+// ── BUILD PROCEDURAL CAR DESIGN (CUSTOM ACCORDING TO CARID) ───────────────────
+// Additional realistic materials
+const chromeMat = new THREE.MeshStandardMaterial({
+  color: 0xf0f0f0,
+  roughness: 0.04,
+  metalness: 1.0,
+  clearcoat: 1.0
+});
+
+const glassDarkMat = new THREE.MeshStandardMaterial({
+  color: 0x111115,
+  roughness: 0.05,
+  metalness: 0.95,
+  transparent: true,
+  opacity: 0.85
+});
+
+const yellowCalipersMat = new THREE.MeshStandardMaterial({
+  color: 0xffea3b,
+  roughness: 0.4,
+  metalness: 0.5
+});
+
+const redCalipersMat = new THREE.MeshStandardMaterial({
+  color: 0xd50000,
+  roughness: 0.4,
+  metalness: 0.5
+});
+
+const mirrorGlassMat = new THREE.MeshStandardMaterial({
+  color: 0xdddddd,
+  roughness: 0.01,
+  metalness: 0.98
+});
+
+// Helper for TR license plate
+function createLicensePlateTexture(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  
+  // Plate base white
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 128, 32);
+  
+  // Blue TR band
+  ctx.fillStyle = '#002fbe';
+  ctx.fillRect(0, 0, 16, 32);
+  
+  // TR text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('TR', 8, 22);
+  
+  // Black border
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(0, 0, 128, 32);
+  
+  // License Plate Text
+  ctx.fillStyle = '#000000';
+  ctx.font = '900 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, 72, 22);
+  
+  const texture = new THREE.CanvasTexture(canvas);
+  return texture;
+}
+
+// Get correct plate text for selected model
+let plateString = "34 DRIFT 34";
+if (carId === "rust_bucket") plateString = "06 HM 124";
+else if (carId === "tofas_sahin") plateString = "34 S 500";
+else if (carId === "bmw_m3") plateString = "34 BMW 03";
+else if (carId === "tesla_model_s") plateString = "34 ECO 99";
+else if (carId === "ferrari") plateString = "34 F 40";
+
+const plateTex = createLicensePlateTexture(plateString);
+const plateMat = new THREE.MeshBasicMaterial({ map: plateTex });
+
+let bodyColor = carColorHex;
+let bodyRoughness = 0.12;
+let bodyMetalness = 0.95;
+
+if (carId === "rust_bucket") {
+  bodyColor = 0x8d5c4c; // Rusty Murat 124
+  bodyRoughness = 0.85;
+  bodyMetalness = 0.2;
+} else if (carId === "tofas_sahin") {
+  bodyColor = 0xf5f5f5; // Classic White Sahin
+  bodyRoughness = 0.25;
+  bodyMetalness = 0.65;
+} else if (carId === "bmw_m3") {
+  bodyColor = 0x0c4bb0; // Estoril Blue M3
+  bodyRoughness = 0.10;
+  bodyMetalness = 0.90;
+} else if (carId === "tesla_model_s") {
+  bodyColor = 0x1e2229; // Obsidian Black Tesla
+  bodyRoughness = 0.08;
+  bodyMetalness = 0.95;
+} else if (carId === "ferrari") {
+  bodyColor = 0xd50000; // Rosso Corsa Ferrari
+  bodyRoughness = 0.04;
+  bodyMetalness = 0.98;
+}
+
+carBodyMat.color.setHex(bodyColor);
+carBodyMat.roughness = bodyRoughness;
+carBodyMat.metalness = bodyMetalness;
+
 const carGroup = new THREE.Group();
 const carVisualGroup = new THREE.Group(); // Inner visual group to support active roll/tilt leans!
 carGroup.add(carVisualGroup);
 scene.add(carGroup);
 
-const carLength = 4.4;
-const carHeight = 0.78;
-const carWidth = 2.1;
+let carLength = 4.4;
+let carHeight = 0.78;
+let carWidth = 2.1;
 
-// 1. CAR CORE SHAPE (Aerodynamic low-profile layout)
-const mainBodyGeo = new THREE.BoxGeometry(carLength, carHeight, carWidth);
-const mainBodyMesh = new THREE.Mesh(mainBodyGeo, carBodyMat);
-mainBodyMesh.position.y = 0.42 + carHeight/2;
-mainBodyMesh.castShadow = true;
-mainBodyMesh.receiveShadow = true;
-carVisualGroup.add(mainBodyMesh);
+if (carId === "rust_bucket") {
+  carLength = 3.9; carHeight = 0.92; carWidth = 1.75;
+} else if (carId === "tofas_sahin") {
+  carLength = 4.3; carHeight = 0.90; carWidth = 1.85;
+} else if (carId === "bmw_m3") {
+  carLength = 4.5; carHeight = 0.82; carWidth = 2.0;
+} else if (carId === "tesla_model_s") {
+  carLength = 4.7; carHeight = 0.80; carWidth = 2.1;
+} else if (carId === "ferrari") {
+  carLength = 4.6; carHeight = 0.68; carWidth = 2.15;
+}
 
-// Curved sloping hood detail
-const hoodGeo = new THREE.BoxGeometry(1.4, 0.22, carWidth - 0.05);
-const hoodMesh = new THREE.Mesh(hoodGeo, carBodyMat);
-hoodMesh.position.set(carLength/2 - 0.7, 0.42 + carHeight - 0.08, 0);
-hoodMesh.rotation.z = -0.11; // slopes downward
-hoodMesh.castShadow = true;
-carVisualGroup.add(hoodMesh);
+const bodyWidth = carWidth - 0.35;
+const lightZOffset = bodyWidth * 0.38;
 
-// Sleek glass canopy cockpit
-const cabinLength = 2.0;
-const cabinHeight = 0.58;
-const cabinWidth = 1.7;
-const cabinGeo = new THREE.BoxGeometry(cabinLength, cabinHeight, cabinWidth);
-const cabinMesh = new THREE.Mesh(cabinGeo, carbonMat);
-cabinMesh.position.set(-0.2, 0.42 + carHeight + cabinHeight/2 - 0.06, 0);
-cabinMesh.castShadow = true;
-carVisualGroup.add(cabinMesh);
+// 1. CHASSIS MESHES BASED ON MODEL DESIGN
+if (carId === "rust_bucket") {
+  // Murat 124: Small flat boxy retro sedan
+  const mainBodyGeo = new THREE.BoxGeometry(carLength * 0.95, carHeight * 0.55, bodyWidth);
+  const mainBodyMesh = new THREE.Mesh(mainBodyGeo, carBodyMat);
+  mainBodyMesh.position.y = 0.42 + carHeight * 0.27;
+  mainBodyMesh.castShadow = true;
+  mainBodyMesh.receiveShadow = true;
+  carVisualGroup.add(mainBodyMesh);
+  
+  const hoodGeo = new THREE.BoxGeometry(1.0, carHeight * 0.45, bodyWidth - 0.02);
+  const hoodMesh = new THREE.Mesh(hoodGeo, carBodyMat);
+  hoodMesh.position.set(carLength/2 - 0.55, 0.42 + carHeight * 0.22, 0);
+  hoodMesh.castShadow = true;
+  carVisualGroup.add(hoodMesh);
+  
+  const cabinGeo = new THREE.BoxGeometry(1.8, carHeight * 0.62, bodyWidth - 0.06);
+  const cabinMesh = new THREE.Mesh(cabinGeo, carBodyMat);
+  cabinMesh.position.set(-0.25, 0.42 + carHeight * 0.75, 0);
+  cabinMesh.castShadow = true;
+  carVisualGroup.add(cabinMesh);
+  
+  // Retro chrome bumpers
+  const bumperGeo = new THREE.BoxGeometry(0.08, 0.1, bodyWidth + 0.1);
+  const bumperMesh = new THREE.Mesh(bumperGeo, chromeMat);
+  bumperMesh.position.set(carLength/2 + 0.04, 0.46, 0);
+  bumperMesh.castShadow = true;
+  carVisualGroup.add(bumperMesh);
+  
+  const rearBumper = bumperMesh.clone();
+  rearBumper.position.set(-carLength/2 - 0.04, 0.46, 0);
+  carVisualGroup.add(rearBumper);
+  
+  // Classic round chrome mirrors
+  const mirrorGeo = new THREE.SphereGeometry(0.06, 8, 8);
+  const mirrorL = new THREE.Mesh(mirrorGeo, chromeMat);
+  mirrorL.position.set(carLength * 0.2, 0.42 + carHeight * 0.7, bodyWidth/2 + 0.08);
+  const mirrorStemGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.12);
+  const stemL = new THREE.Mesh(mirrorStemGeo, chromeMat);
+  stemL.position.set(carLength * 0.2, 0.42 + carHeight * 0.65, bodyWidth/2 + 0.04);
+  stemL.rotation.x = 0.4;
+  carVisualGroup.add(mirrorL);
+  carVisualGroup.add(stemL);
 
-// Blue sky reflecting windshield panels
-const glassMat = new THREE.MeshStandardMaterial({ color: 0x5dade2, roughness: 0.05, metalness: 0.95, transparent: true, opacity: 0.75 });
-const windshieldGeo = new THREE.BoxGeometry(0.1, cabinHeight * 0.9, cabinWidth * 0.95);
+  const mirrorR = mirrorL.clone();
+  mirrorR.position.z = -bodyWidth/2 - 0.08;
+  const stemR = stemL.clone();
+  stemR.position.z = -bodyWidth/2 - 0.04;
+  stemR.rotation.x = -0.4;
+  carVisualGroup.add(mirrorR);
+  carVisualGroup.add(stemR);
+
+} else if (carId === "tofas_sahin") {
+  // Tofas Sahin: Distinct boxy sedan with black bumpers
+  const mainBodyGeo = new THREE.BoxGeometry(carLength, carHeight * 0.52, bodyWidth);
+  const mainBodyMesh = new THREE.Mesh(mainBodyGeo, carBodyMat);
+  mainBodyMesh.position.y = 0.42 + carHeight * 0.26;
+  mainBodyMesh.castShadow = true;
+  mainBodyMesh.receiveShadow = true;
+  carVisualGroup.add(mainBodyMesh);
+  
+  const hoodGeo = new THREE.BoxGeometry(1.2, carHeight * 0.46, bodyWidth - 0.02);
+  const hoodMesh = new THREE.Mesh(hoodGeo, carBodyMat);
+  hoodMesh.position.set(carLength/2 - 0.6, 0.42 + carHeight * 0.23, 0);
+  hoodMesh.castShadow = true;
+  carVisualGroup.add(hoodMesh);
+  
+  const cabinGeo = new THREE.BoxGeometry(2.1, carHeight * 0.62, bodyWidth - 0.05);
+  const cabinMesh = new THREE.Mesh(cabinGeo, carBodyMat);
+  cabinMesh.position.set(-0.15, 0.42 + carHeight * 0.78, 0);
+  cabinMesh.castShadow = true;
+  carVisualGroup.add(cabinMesh);
+  
+  // Black bumpers
+  const bumperGeo = new THREE.BoxGeometry(0.14, 0.16, bodyWidth + 0.08);
+  const bumperMesh = new THREE.Mesh(bumperGeo, carbonMat);
+  bumperMesh.position.set(carLength/2 + 0.05, 0.48, 0);
+  carVisualGroup.add(bumperMesh);
+  
+  const rearBumper = bumperMesh.clone();
+  rearBumper.position.set(-carLength/2 - 0.05, 0.48, 0);
+  carVisualGroup.add(rearBumper);
+  
+  // Black side protectors
+  const stripGeo = new THREE.BoxGeometry(carLength * 0.85, 0.05, 0.03);
+  const stripL = new THREE.Mesh(stripGeo, carbonMat);
+  stripL.position.set(-0.1, 0.42 + carHeight * 0.25, bodyWidth/2 + 0.01);
+  const stripR = stripL.clone();
+  stripR.position.z = -bodyWidth/2 - 0.01;
+  carVisualGroup.add(stripL);
+  carVisualGroup.add(stripR);
+
+  // Tuned Side Skirts
+  const skirtGeo = new THREE.BoxGeometry(carLength * 0.68, 0.08, 0.06);
+  const skirtL = new THREE.Mesh(skirtGeo, carbonMat);
+  skirtL.position.set(0, 0.42, bodyWidth/2 + 0.02);
+  const skirtR = skirtL.clone();
+  skirtR.position.z = -bodyWidth/2 - 0.02;
+  carVisualGroup.add(skirtL);
+  carVisualGroup.add(skirtR);
+
+  // Black rectangular side mirrors
+  const mirrorGeo = new THREE.BoxGeometry(0.12, 0.08, 0.15);
+  const mirrorL = new THREE.Mesh(mirrorGeo, carbonMat);
+  mirrorL.position.set(carLength * 0.24, 0.42 + carHeight * 0.64, bodyWidth/2 + 0.12);
+  carVisualGroup.add(mirrorL);
+  const mirrorR = mirrorL.clone();
+  mirrorR.position.z = -bodyWidth/2 - 0.12;
+  carVisualGroup.add(mirrorR);
+
+  // Rear windshield sunshade Louver
+  const louverGeo = new THREE.BoxGeometry(0.02, 0.45, bodyWidth - 0.1);
+  const louver = new THREE.Mesh(louverGeo, carbonMat);
+  louver.position.set(-1.0, 0.42 + carHeight * 0.8, 0);
+  louver.rotation.z = -0.38;
+  carVisualGroup.add(louver);
+
+} else if (carId === "bmw_m3") {
+  // BMW M3: Sporty aggressive coupe
+  const mainBodyGeo = new THREE.BoxGeometry(carLength, carHeight * 0.48, bodyWidth);
+  const mainBodyMesh = new THREE.Mesh(mainBodyGeo, carBodyMat);
+  mainBodyMesh.position.y = 0.42 + carHeight * 0.24;
+  mainBodyMesh.castShadow = true;
+  mainBodyMesh.receiveShadow = true;
+  carVisualGroup.add(mainBodyMesh);
+  
+  const hoodGeo = new THREE.BoxGeometry(1.4, carHeight * 0.42, bodyWidth - 0.02);
+  const hoodMesh = new THREE.Mesh(hoodGeo, carBodyMat);
+  hoodMesh.position.set(carLength/2 - 0.7, 0.42 + carHeight * 0.21, 0);
+  hoodMesh.rotation.z = -0.05;
+  hoodMesh.castShadow = true;
+  carVisualGroup.add(hoodMesh);
+  
+  const cabinGeo = new THREE.BoxGeometry(2.1, carHeight * 0.56, bodyWidth - 0.04);
+  const cabinMesh = new THREE.Mesh(cabinGeo, carbonMat);
+  cabinMesh.position.set(-0.15, 0.42 + carHeight * 0.72, 0);
+  cabinMesh.castShadow = true;
+  carVisualGroup.add(cabinMesh);
+  
+  // Dynamic front lower splitter
+  const frontSplitterGeo = new THREE.BoxGeometry(0.14, 0.12, bodyWidth + 0.06);
+  const frontSplitter = new THREE.Mesh(frontSplitterGeo, carbonMat);
+  frontSplitter.position.set(carLength/2 + 0.02, 0.44, 0);
+  carVisualGroup.add(frontSplitter);
+
+  // Side mirrors
+  const mirrorGeo = new THREE.BoxGeometry(0.14, 0.08, 0.18);
+  const mirrorL = new THREE.Mesh(mirrorGeo, carBodyMat);
+  mirrorL.position.set(carLength * 0.22, 0.42 + carHeight * 0.58, bodyWidth/2 + 0.12);
+  carVisualGroup.add(mirrorL);
+  const mirrorR = mirrorL.clone();
+  mirrorR.position.z = -bodyWidth/2 - 0.12;
+  carVisualGroup.add(mirrorR);
+
+  // Kidney grille
+  const kidneyGeo = new THREE.BoxGeometry(0.03, 0.16, 0.28);
+  const kidneyL = new THREE.Mesh(kidneyGeo, chromeMat);
+  kidneyL.position.set(carLength/2 + 0.01, 0.42 + carHeight * 0.3, 0.15);
+  carVisualGroup.add(kidneyL);
+  
+  const kidneyR = kidneyL.clone();
+  kidneyR.position.z = -0.15;
+  carVisualGroup.add(kidneyR);
+
+} else if (carId === "tesla_model_s") {
+  // Tesla Model S: Sleek modern electric fastback
+  const mainBodyGeo = new THREE.BoxGeometry(carLength, carHeight * 0.46, bodyWidth);
+  const mainBodyMesh = new THREE.Mesh(mainBodyGeo, carBodyMat);
+  mainBodyMesh.position.y = 0.42 + carHeight * 0.23;
+  mainBodyMesh.castShadow = true;
+  mainBodyMesh.receiveShadow = true;
+  carVisualGroup.add(mainBodyMesh);
+  
+  const hoodGeo = new THREE.BoxGeometry(1.6, carHeight * 0.4, bodyWidth - 0.02);
+  const hoodMesh = new THREE.Mesh(hoodGeo, carBodyMat);
+  hoodMesh.position.set(carLength/2 - 0.8, 0.42 + carHeight * 0.2, 0);
+  hoodMesh.rotation.z = -0.1;
+  hoodMesh.castShadow = true;
+  carVisualGroup.add(hoodMesh);
+  
+  const cabinGeo = new THREE.BoxGeometry(2.3, carHeight * 0.54, bodyWidth - 0.06);
+  const cabinMesh = new THREE.Mesh(cabinGeo, glassDarkMat);
+  cabinMesh.position.set(-0.15, 0.42 + carHeight * 0.68, 0);
+  cabinMesh.castShadow = true;
+  carVisualGroup.add(cabinMesh);
+
+  // Modern slim aerodynamic side mirrors
+  const mirrorGeo = new THREE.BoxGeometry(0.12, 0.06, 0.16);
+  const mirrorL = new THREE.Mesh(mirrorGeo, carBodyMat);
+  mirrorL.position.set(carLength * 0.25, 0.42 + carHeight * 0.54, bodyWidth/2 + 0.1);
+  carVisualGroup.add(mirrorL);
+  const mirrorR = mirrorL.clone();
+  mirrorR.position.z = -bodyWidth/2 - 0.1;
+  carVisualGroup.add(mirrorR);
+
+  // Windows chrome trim strips
+  const trimGeo = new THREE.BoxGeometry(2.1, 0.03, 0.02);
+  const trimL = new THREE.Mesh(trimGeo, chromeMat);
+  trimL.position.set(-0.15, 0.42 + carHeight * 0.42, bodyWidth/2 + 0.01);
+  const trimR = trimL.clone();
+  trimR.position.z = -bodyWidth/2 - 0.01;
+  carVisualGroup.add(trimL);
+  carVisualGroup.add(trimR);
+
+} else if (carId === "ferrari") {
+  // Ferrari: Ultimate low-profile wedge supercar
+  const mainBodyGeo = new THREE.BoxGeometry(carLength, carHeight * 0.42, bodyWidth);
+  const mainBodyMesh = new THREE.Mesh(mainBodyGeo, carBodyMat);
+  mainBodyMesh.position.y = 0.42 + carHeight * 0.21;
+  mainBodyMesh.castShadow = true;
+  mainBodyMesh.receiveShadow = true;
+  carVisualGroup.add(mainBodyMesh);
+  
+  const hoodGeo = new THREE.BoxGeometry(1.7, carHeight * 0.38, bodyWidth - 0.02);
+  const hoodMesh = new THREE.Mesh(hoodGeo, carBodyMat);
+  hoodMesh.position.set(carLength/2 - 0.85, 0.42 + carHeight * 0.19, 0);
+  hoodMesh.rotation.z = -0.16;
+  hoodMesh.castShadow = true;
+  carVisualGroup.add(hoodMesh);
+  
+  const cabinGeo = new THREE.BoxGeometry(1.9, carHeight * 0.58, bodyWidth - 0.1);
+  const cabinMesh = new THREE.Mesh(cabinGeo, glassDarkMat);
+  cabinMesh.position.set(-0.05, 0.42 + carHeight * 0.68, 0);
+  cabinMesh.castShadow = true;
+  carVisualGroup.add(cabinMesh);
+  
+  // Wide black front racing splitter
+  const splitterGeo = new THREE.BoxGeometry(0.18, 0.08, bodyWidth + 0.1);
+  const splitter = new THREE.Mesh(splitterGeo, carbonMat);
+  splitter.position.set(carLength/2 + 0.02, 0.43, 0);
+  carVisualGroup.add(splitter);
+  
+  // NACA hood ducts
+  const ventGeo = new THREE.BoxGeometry(0.3, 0.02, 0.22);
+  const ventL = new THREE.Mesh(ventGeo, carbonMat);
+  ventL.position.set(carLength/2 - 0.5, 0.42 + carHeight * 0.34, 0.2);
+  ventL.rotation.z = -0.16;
+  const ventR = ventL.clone();
+  ventR.position.z = -0.2;
+  carVisualGroup.add(ventL);
+  carVisualGroup.add(ventR);
+
+  // Wedge side mirrors
+  const mirrorGeo = new THREE.BoxGeometry(0.15, 0.06, 0.18);
+  const mirrorL = new THREE.Mesh(mirrorGeo, carBodyMat);
+  mirrorL.position.set(carLength * 0.18, 0.42 + carHeight * 0.52, bodyWidth/2 + 0.08);
+  carVisualGroup.add(mirrorL);
+  const mirrorR = mirrorL.clone();
+  mirrorR.position.z = -bodyWidth/2 - 0.08;
+  carVisualGroup.add(mirrorR);
+
+  // Dynamic side aerodynamic air vents
+  const intakeGeo = new THREE.BoxGeometry(0.55, 0.32, 0.06);
+  const intakeL = new THREE.Mesh(intakeGeo, carbonMat);
+  intakeL.position.set(-0.8, 0.42 + carHeight * 0.22, bodyWidth/2 - 0.01);
+  const intakeR = intakeL.clone();
+  intakeR.position.z = -bodyWidth/2 + 0.01;
+  carVisualGroup.add(intakeL);
+  carVisualGroup.add(intakeR);
+}
+
+// Windshield reflection glasses
+let cabLen = (carId === "rust_bucket") ? 1.8 : (carId === "tofas_sahin") ? 2.1 : (carId === "bmw_m3") ? 2.1 : (carId === "tesla_model_s") ? 2.3 : 1.9;
+let cabH = (carId === "rust_bucket") ? (carHeight * 0.62) : (carId === "tofas_sahin") ? (carHeight * 0.62) : (carId === "bmw_m3") ? (carHeight * 0.56) : (carId === "tesla_model_s") ? (carHeight * 0.54) : (carHeight * 0.58);
+let cabW = (carId === "rust_bucket") ? (bodyWidth - 0.06) : (carId === "tofas_sahin") ? (bodyWidth - 0.05) : (carId === "bmw_m3") ? (bodyWidth - 0.04) : (carId === "tesla_model_s") ? (bodyWidth - 0.06) : (bodyWidth - 0.1);
+let cabX = (carId === "rust_bucket") ? -0.25 : (carId === "tofas_sahin") ? -0.15 : (carId === "bmw_m3") ? -0.15 : (carId === "tesla_model_s") ? -0.15 : -0.05;
+
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x5dade2, roughness: 0.02, metalness: 0.98, transparent: true, opacity: 0.72 });
+const windshieldGeo = new THREE.BoxGeometry(0.04, cabH * 0.88, cabW * 0.94);
 const windshield = new THREE.Mesh(windshieldGeo, glassMat);
-windshield.position.set(cabinLength/2 - 0.2, 0.42 + carHeight + cabinHeight/2 - 0.06, 0);
-windshield.rotation.z = 0.45; // slanted sporty windshield
+windshield.position.set(cabX + cabLen/2 - 0.08, 0.42 + carHeight * 0.42 + cabH/2, 0);
+windshield.rotation.z = (carId === "rust_bucket" || carId === "tofas_sahin") ? 0.20 : 0.42;
 carVisualGroup.add(windshield);
 
-// 2. SPORTS WHEELS (With stars spoke alloy rims)
-const wheelGeom = new THREE.CylinderGeometry(0.42, 0.42, 0.42, 16);
-wheelGeom.rotateX(Math.PI / 2);
+const rearWindow = windshield.clone();
+rearWindow.position.set(cabX - cabLen/2 + 0.08, 0.42 + carHeight * 0.42 + cabH/2, 0);
+rearWindow.rotation.z = (carId === "rust_bucket" || carId === "tofas_sahin") ? -0.20 : -0.38;
+carVisualGroup.add(rearWindow);
 
+
+// 2. STABLE TWO-TIER RIGGED WHEELS (Z-ROLLING INSIDE Y-STEERING) WITH ULTRA-REALISTIC DETAILING
 const wheels = [];
+const wheelSpinGroups = [];
 const wfbOffset = carLength * 0.32;
-const wlrOffset = carWidth * 0.45;
+const wlrOffset = carWidth * 0.48; // Sit on the sides!
 
 const wheelOffsets = [
   { x: wfbOffset, z: wlrOffset },   // Front Right
@@ -676,118 +1103,633 @@ const wheelOffsets = [
   { x: -wfbOffset, z: -wlrOffset }  // Rear Left
 ];
 
+const tireRadius = 0.42;
+const tireWidth = 0.38;
+
+// Cylinders are oriented along the Y axis by default, rotate it on X to orient sideways (along Z)
+const wheelGeom = new THREE.CylinderGeometry(tireRadius, tireRadius, tireWidth, 24);
+wheelGeom.rotateX(Math.PI / 2);
+
 wheelOffsets.forEach((off, i) => {
   const wParent = new THREE.Group();
   wParent.position.set(off.x, 0.42, off.z);
   
-  // Tire cylinder
+  // Secondary nested wheel spin group for Z-axis roll spin rotation
+  const spinGroup = new THREE.Group();
+  wParent.add(spinGroup);
+  wheelSpinGroups.push(spinGroup);
+  
+  // 1. Tire Rubber
   const tire = new THREE.Mesh(wheelGeom, tireMat);
   tire.castShadow = true;
-  wParent.add(tire);
+  tire.receiveShadow = true;
+  spinGroup.add(tire);
   
-  // Inner metallic Rim Spoke geometry (5 spokes)
+  // Create beautiful customized rims depending on the model!
   const rimGroup = new THREE.Group();
-  rimGroup.position.y = 0;
   
-  const centerHubGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.44, 8);
-  centerHubGeo.rotateX(Math.PI/2);
-  const centerHub = new THREE.Mesh(centerHubGeo, alloyMat);
-  rimGroup.add(centerHub);
-  
-  // Create 5 spoke bar mesh elements
-  const spokeGeo = new THREE.BoxGeometry(0.08, 0.38, 0.43);
-  for (let s = 0; s < 5; s++) {
-    const spoke = new THREE.Mesh(spokeGeo, alloyMat);
-    spoke.rotation.z = (s * Math.PI * 2) / 5;
-    rimGroup.add(spoke);
+  if (carId === "rust_bucket") {
+    // 124 Classic steel wheels with baby moon chrome center caps + white walls
+    const discGeo = new THREE.CylinderGeometry(tireRadius * 0.88, tireRadius * 0.88, tireWidth + 0.01, 16);
+    discGeo.rotateX(Math.PI / 2);
+    const disc = new THREE.Mesh(discGeo, carbonMat); // Black steel wheel base
+    rimGroup.add(disc);
+    
+    // White wall rings on outer sides (towards positive Z for right, negative Z for left)
+    const sideSign = (off.z > 0) ? 1 : -1;
+    const wwGeo = new THREE.RingGeometry(tireRadius * 0.65, tireRadius * 0.85, 16);
+    const wwMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    const whiteWall = new THREE.Mesh(wwGeo, wwMat);
+    whiteWall.position.z = sideSign * (tireWidth / 2 + 0.012);
+    rimGroup.add(whiteWall);
+    
+    // Baby Moon central chrome hubcap
+    const capGeo = new THREE.SphereGeometry(tireRadius * 0.42, 12, 12);
+    capGeo.scale(1, 1, 0.35); // flatten sphere
+    const cap = new THREE.Mesh(capGeo, chromeMat);
+    cap.position.z = sideSign * (tireWidth / 2 + 0.015);
+    cap.rotation.x = Math.PI/2;
+    rimGroup.add(cap);
+    
+  } else if (carId === "tofas_sahin") {
+    // CMS 40 Classic Turkish Tuner Rims: Five big wide spokes with high metallic contrast
+    const sideSign = (off.z > 0) ? 1 : -1;
+    
+    // Deep-dish barrel
+    const barrelGeo = new THREE.CylinderGeometry(tireRadius * 0.8, tireRadius * 0.82, tireWidth * 0.8, 16);
+    barrelGeo.rotateX(Math.PI / 2);
+    const barrel = new THREE.Mesh(barrelGeo, chromeMat);
+    rimGroup.add(barrel);
+    
+    // Star-spoke face
+    const spokeFace = new THREE.Group();
+    spokeFace.position.z = sideSign * (tireWidth/2 - 0.01);
+    
+    const centerHubGeo = new THREE.CylinderGeometry(tireRadius * 0.26, tireRadius * 0.26, 0.04, 8);
+    centerHubGeo.rotateX(Math.PI/2);
+    const centerHub = new THREE.Mesh(centerHubGeo, alloyMat);
+    spokeFace.add(centerHub);
+    
+    // 5 wide CMS 40-style block spokes
+    for (let s = 0; s < 5; s++) {
+      const spokeGeo = new THREE.BoxGeometry(0.08, tireRadius * 1.38, 0.02);
+      const spoke = new THREE.Mesh(spokeGeo, alloyMat);
+      spoke.rotation.z = (s * Math.PI * 2) / 5;
+      spokeFace.add(spoke);
+      
+      const darkInfillGeo = new THREE.BoxGeometry(0.05, tireRadius * 1.15, 0.01);
+      const darkInfill = new THREE.Mesh(darkInfillGeo, carbonMat);
+      darkInfill.rotation.z = (s * Math.PI * 2) / 5;
+      darkInfill.position.z = sideSign * 0.005;
+      spokeFace.add(darkInfill);
+    }
+    rimGroup.add(spokeFace);
+    
+    // Brake Caliper visible behind (Only front wheels Y-steering / rear static)
+    const caliperGeo = new THREE.BoxGeometry(0.12, 0.22, 0.12);
+    const caliper = new THREE.Mesh(caliperGeo, redCalipersMat);
+    caliper.position.set(-tireRadius * 0.45, tireRadius * 0.25, -sideSign * 0.06);
+    wParent.add(caliper); // Static with parent, doesn't spin!
+    
+  } else if (carId === "bmw_m3") {
+    // Elegant high-performance dark graphite multi-spoke sports rims
+    const sideSign = (off.z > 0) ? 1 : -1;
+    
+    // Slim low profile tire disc
+    const rimGeo = new THREE.CylinderGeometry(tireRadius * 0.84, tireRadius * 0.84, tireWidth + 0.005, 16);
+    rimGeo.rotateX(Math.PI/2);
+    const rimBase = new THREE.Mesh(rimGeo, carbonMat);
+    rimGroup.add(rimBase);
+    
+    // 10 twin-spoke mesh sport wheel face
+    const wheelFace = new THREE.Group();
+    wheelFace.position.z = sideSign * (tireWidth / 2 - 0.01);
+    
+    const hubGeo = new THREE.CylinderGeometry(tireRadius * 0.22, tireRadius * 0.22, 0.03, 10);
+    hubGeo.rotateX(Math.PI/2);
+    const hub = new THREE.Mesh(hubGeo, chromeMat);
+    wheelFace.add(hub);
+    
+    for (let s = 0; s < 10; s++) {
+      const spokeGeo = new THREE.BoxGeometry(0.035, tireRadius * 1.45, 0.025);
+      const spoke = new THREE.Mesh(spokeGeo, alloyMat);
+      spoke.rotation.z = (s * Math.PI * 2) / 10;
+      wheelFace.add(spoke);
+    }
+    rimGroup.add(wheelFace);
+    
+    // Yellow Brembo-style brake caliper
+    const caliperGeo = new THREE.BoxGeometry(0.11, 0.25, 0.14);
+    const caliper = new THREE.Mesh(caliperGeo, yellowCalipersMat);
+    caliper.position.set(-tireRadius * 0.45, tireRadius * 0.35, -sideSign * 0.07);
+    wParent.add(caliper); // Doesn't spin
+    
+  } else if (carId === "tesla_model_s") {
+    // Futuristic silver-gray aero turbine hubcap design
+    const sideSign = (off.z > 0) ? 1 : -1;
+    
+    const aeroGeo = new THREE.CylinderGeometry(tireRadius * 0.86, tireRadius * 0.86, tireWidth + 0.01, 24);
+    aeroGeo.rotateX(Math.PI / 2);
+    const aeroBase = new THREE.Mesh(aeroGeo, carbonMat);
+    rimGroup.add(aeroBase);
+    
+    // Solid face with turbine vents
+    const turbineFace = new THREE.Group();
+    turbineFace.position.z = sideSign * (tireWidth/2 + 0.005);
+    
+    const plateGeo = new THREE.CylinderGeometry(tireRadius * 0.78, tireRadius * 0.78, 0.015, 24);
+    plateGeo.rotateX(Math.PI/2);
+    const plate = new THREE.Mesh(plateGeo, chromeMat);
+    turbineFace.add(plate);
+    
+    // Dark blades
+    for (let s = 0; s < 7; s++) {
+      const bladeGeo = new THREE.BoxGeometry(0.12, tireRadius * 1.5, 0.02);
+      const blade = new THREE.Mesh(bladeGeo, carbonMat);
+      blade.rotation.z = (s * Math.PI * 2) / 7 + (sideSign * 0.12); // Swept turbine look
+      turbineFace.add(blade);
+    }
+    rimGroup.add(turbineFace);
+    
+    // Dark performance brake caliper
+    const caliperGeo = new THREE.BoxGeometry(0.10, 0.22, 0.14);
+    const caliper = new THREE.Mesh(caliperGeo, chromeMat);
+    caliper.position.set(-tireRadius * 0.42, tireRadius * 0.32, -sideSign * 0.08);
+    wParent.add(caliper);
+    
+  } else if (carId === "ferrari") {
+    // Iconic 5-spoke star-pattern gold/silver F40 center-lock racing rims
+    const sideSign = (off.z > 0) ? 1 : -1;
+    
+    // Massive drilled steel brake disc rotor visible in background
+    const rotorGeo = new THREE.CylinderGeometry(tireRadius * 0.65, tireRadius * 0.65, 0.04, 16);
+    rotorGeo.rotateX(Math.PI / 2);
+    const rotor = new THREE.Mesh(rotorGeo, chromeMat);
+    rotor.position.z = sideSign * (tireWidth / 2 - 0.06);
+    rimGroup.add(rotor);
+    
+    // Star Rim Group
+    const starFace = new THREE.Group();
+    starFace.position.z = sideSign * (tireWidth / 2 - 0.005);
+    
+    // Gold/silver anodized star spokes
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.18, metalness: 0.95 });
+    
+    const centerHubGeo = new THREE.SphereGeometry(tireRadius * 0.25, 8, 8);
+    centerHubGeo.scale(1, 1, 0.25);
+    const centerHub = new THREE.Mesh(centerHubGeo, chromeMat);
+    centerHub.rotation.x = Math.PI / 2;
+    starFace.add(centerHub);
+    
+    for (let s = 0; s < 5; s++) {
+      const spokeGeo = new THREE.BoxGeometry(0.09, tireRadius * 1.35, 0.03);
+      const spoke = new THREE.Mesh(spokeGeo, goldMat);
+      spoke.rotation.z = (s * Math.PI * 2) / 5;
+      starFace.add(spoke);
+    }
+    
+    // Chrome center-lock single hex nut
+    const nutGeo = new THREE.CylinderGeometry(tireRadius * 0.08, tireRadius * 0.08, 0.06, 6);
+    nutGeo.rotateX(Math.PI/2);
+    const nut = new THREE.Mesh(nutGeo, chromeMat);
+    nut.position.z = sideSign * 0.02;
+    starFace.add(nut);
+    
+    rimGroup.add(starFace);
+    
+    // Bright Red Brembo Caliper
+    const caliperGeo = new THREE.BoxGeometry(0.12, 0.28, 0.14);
+    const caliper = new THREE.Mesh(caliperGeo, redCalipersMat);
+    caliper.position.set(-tireRadius * 0.44, tireRadius * 0.38, -sideSign * 0.07);
+    wParent.add(caliper);
   }
   
-  wParent.add(rimGroup);
+  spinGroup.add(rimGroup);
   
-  carGroup.add(wParent); // Attach wheels to carGroup to bypass body lean matrix!
+  carGroup.add(wParent);
   wheels.push(wParent);
 });
 
-// 3. LED FRONT HEADLIGHTS & SPOTLIGHT CONES
-const headlightGeom = new THREE.BoxGeometry(0.12, 0.16, 0.34);
-const hlR = new THREE.Mesh(headlightGeom, glowHeadlightMat);
-hlR.position.set(carLength/2 + 0.05, 0.42 + carHeight * 0.45, carWidth * 0.35);
-hlR.rotation.y = 0.15;
-const hlL = hlR.clone();
-hlL.position.z = -carWidth * 0.35;
-hlL.rotation.y = -0.15;
+// 3. LED FRONT HEADLIGHTS & SPOTLIGHTS (OPTIMIZED SHADOWS)
+let hlR, hlL;
+
+if (carId === "rust_bucket") {
+  // Vintage round chrome dual-pod headlights
+  const hlGroupR = new THREE.Group();
+  const rimGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.08, 12);
+  rimGeo.rotateX(Math.PI/2);
+  const rim = new THREE.Mesh(rimGeo, chromeMat);
+  hlGroupR.add(rim);
+  
+  const bulbGeo = new THREE.SphereGeometry(0.11, 8, 8);
+  bulbGeo.scale(1, 1, 0.5);
+  const bulb = new THREE.Mesh(bulbGeo, new THREE.MeshBasicMaterial({ color: 0xffe082 })); // Retro warm yellow
+  bulb.position.set(0, 0, 0.02);
+  bulb.rotation.x = Math.PI/2;
+  hlGroupR.add(bulb);
+  hlGroupR.position.set(carLength/2 + 0.02, 0.42 + carHeight * 0.42, lightZOffset);
+  hlGroupR.rotation.y = 0.12;
+  
+  hlR = hlGroupR;
+  hlL = hlGroupR.clone();
+  hlL.position.z = -lightZOffset;
+  hlL.rotation.y = -0.12;
+  
+} else if (carId === "tofas_sahin") {
+  // Boxy Turkey-style retro sedan headlights with amber side markers
+  const hlGroupR = new THREE.Group();
+  const casingGeo = new THREE.BoxGeometry(0.1, 0.2, 0.38);
+  const casing = new THREE.Mesh(casingGeo, carbonMat);
+  hlGroupR.add(casing);
+  
+  const glassGeo = new THREE.BoxGeometry(0.02, 0.16, 0.24);
+  const glassMesh = new THREE.Mesh(glassGeo, glowHeadlightMat);
+  glassMesh.position.set(0.051, 0, -0.05);
+  hlGroupR.add(glassMesh);
+  
+  const indicatorGeo = new THREE.BoxGeometry(0.02, 0.16, 0.08);
+  const indicator = new THREE.Mesh(indicatorGeo, new THREE.MeshBasicMaterial({ color: 0xffa000 })); // Amber indicator
+  indicator.position.set(0.051, 0, 0.12);
+  hlGroupR.add(indicator);
+  
+  hlGroupR.position.set(carLength/2 + 0.02, 0.42 + carHeight * 0.38, lightZOffset);
+  hlGroupR.rotation.y = 0.1;
+  
+  hlR = hlGroupR;
+  hlL = hlGroupR.clone();
+  hlL.position.z = -lightZOffset;
+  hlL.rotation.y = -0.1;
+  // mirror indicator position on Left headlamp
+  hlL.children[2].position.z = -0.12;
+  
+} else if (carId === "bmw_m3") {
+  // Dual-Pod LED Angel Eyes with slim indicators
+  const hlGroupR = new THREE.Group();
+  
+  const podGeo = new THREE.BoxGeometry(0.12, 0.15, 0.36);
+  const pod = new THREE.Mesh(podGeo, carbonMat);
+  hlGroupR.add(pod);
+  
+  // Two glowing circles
+  const ringGeo1 = new THREE.RingGeometry(0.03, 0.05, 12);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, side: THREE.DoubleSide });
+  const r1 = new THREE.Mesh(ringGeo1, ringMat);
+  r1.position.set(0.062, 0, -0.07);
+  r1.rotation.y = Math.PI/2;
+  hlGroupR.add(r1);
+  
+  const r2 = r1.clone();
+  r2.position.x = 0.062;
+  r2.position.z = 0.05;
+  hlGroupR.add(r2);
+  
+  hlGroupR.position.set(carLength/2 + 0.01, 0.42 + carHeight * 0.28, lightZOffset);
+  hlGroupR.rotation.y = 0.18;
+  
+  hlR = hlGroupR;
+  hlL = hlGroupR.clone();
+  hlL.position.z = -lightZOffset;
+  hlL.rotation.y = -0.18;
+  
+} else if (carId === "tesla_model_s") {
+  // Futuristic horizontal ultra-slim LED ribbon
+  const hlGroupR = new THREE.Group();
+  const barGeo = new THREE.BoxGeometry(0.15, 0.06, 0.42);
+  const bar = new THREE.Mesh(barGeo, carbonMat);
+  hlGroupR.add(bar);
+  
+  const neonLineGeo = new THREE.BoxGeometry(0.02, 0.03, 0.38);
+  const neonLine = new THREE.Mesh(neonLineGeo, winLitCyan);
+  neonLine.position.set(0.076, 0, 0);
+  hlGroupR.add(neonLine);
+  
+  hlGroupR.position.set(carLength/2 + 0.02, 0.42 + carHeight * 0.25, lightZOffset - 0.05);
+  hlGroupR.rotation.y = 0.22;
+  
+  hlR = hlGroupR;
+  hlL = hlGroupR.clone();
+  hlL.position.z = -lightZOffset + 0.05;
+  hlL.rotation.y = -0.22;
+  
+} else if (carId === "ferrari") {
+  // Pop-up headlights style wedge covers with amber indicator bars underneath
+  const hlGroupR = new THREE.Group();
+  
+  // Headlamp pod wedge
+  const wedgeGeo = new THREE.BoxGeometry(0.16, 0.1, 0.36);
+  const wedge = new THREE.Mesh(wedgeGeo, carBodyMat);
+  hlGroupR.add(wedge);
+  
+  const lensGeo = new THREE.BoxGeometry(0.03, 0.05, 0.16);
+  const lens = new THREE.Mesh(lensGeo, glowHeadlightMat);
+  lens.position.set(0.081, 0.01, -0.04);
+  hlGroupR.add(lens);
+  
+  const amberBarGeo = new THREE.BoxGeometry(0.04, 0.03, 0.1);
+  const amberBar = new THREE.Mesh(amberBarGeo, new THREE.MeshBasicMaterial({ color: 0xff3d00 }));
+  amberBar.position.set(0.081, -0.02, 0.08);
+  hlGroupR.add(amberBar);
+  
+  hlGroupR.position.set(carLength/2 - 0.1, 0.42 + carHeight * 0.25, lightZOffset);
+  hlGroupR.rotation.y = 0.16;
+  hlGroupR.rotation.z = -0.15; // aligns with nose wedge slope
+  
+  hlR = hlGroupR;
+  hlL = hlGroupR.clone();
+  hlL.position.z = -lightZOffset;
+  hlL.rotation.y = -0.16;
+}
+
 carVisualGroup.add(hlR);
 carVisualGroup.add(hlL);
 
-// Real spotlights pointing down onto the asphalt
-const spotLightR = new THREE.SpotLight(0xffffff, 3.5, 50, Math.PI/4.5, 0.6, 1);
-spotLightR.position.set(carLength/2, 0.42 + carHeight * 0.45, carWidth * 0.35);
-spotLightR.castShadow = true;
-spotLightR.shadow.bias = -0.001;
+// Headlight spotlights projection (no shadows for smooth 60fps)
+const spotIntensity = (carId === "rust_bucket") ? 1.0 : (carId === "tofas_sahin") ? 2.0 : 3.8;
+const spotLightR = new THREE.SpotLight((carId === "rust_bucket") ? 0xffdfbd : 0xffffff, spotIntensity, 55, Math.PI/4.5, 0.6, 1);
+spotLightR.position.set(carLength/2, 0.42 + carHeight * 0.45, lightZOffset);
+spotLightR.castShadow = false; // Disabling headlight shadows for blazing fast rendering
 const targetObjR = new THREE.Object3D();
-targetObjR.position.set(carLength/2 + 25, 0.1, carWidth * 0.35);
+targetObjR.position.set(carLength/2 + 25, 0.1, lightZOffset);
 carVisualGroup.add(targetObjR);
 spotLightR.target = targetObjR;
 carVisualGroup.add(spotLightR);
 
 const spotLightL = spotLightR.clone();
-spotLightL.position.z = -carWidth * 0.35;
+spotLightL.position.z = -lightZOffset;
 const targetObjL = new THREE.Object3D();
-targetObjL.position.set(carLength/2 + 25, 0.1, -carWidth * 0.35);
+targetObjL.position.set(carLength/2 + 25, 0.1, -lightZOffset);
 carVisualGroup.add(targetObjL);
 spotLightL.target = targetObjL;
 carVisualGroup.add(spotLightL);
 
-// 4. LED REAR TAILLIGHTS
-const taillightGeom = new THREE.BoxGeometry(0.1, 0.1, 0.42);
-const tlR = new THREE.Mesh(taillightGeom, glowTaillightMat);
-tlR.position.set(-carLength/2 - 0.02, 0.42 + carHeight * 0.6, carWidth * 0.33);
-const tlL = tlR.clone();
-tlL.position.z = -carWidth * 0.33;
-carVisualGroup.add(tlR);
-carVisualGroup.add(tlL);
+// 4. TAILLIGHT DESIGN
+if (carId === "rust_bucket") {
+  // Vintage vertical retro rectangular lights
+  const tlGroupR = new THREE.Group();
+  const baseGeo = new THREE.BoxGeometry(0.04, 0.22, 0.1);
+  const base = new THREE.Mesh(baseGeo, chromeMat);
+  tlGroupR.add(base);
+  
+  const redGeo = new THREE.BoxGeometry(0.02, 0.18, 0.06);
+  const redGlow = new THREE.Mesh(redGeo, glowTaillightMat);
+  redGlow.position.set(0.011, 0, 0);
+  tlGroupR.add(redGlow);
+  
+  tlGroupR.position.set(-carLength/2 - 0.01, 0.42 + carHeight * 0.35, lightZOffset * 0.85);
+  
+  const tlR = tlGroupR;
+  const tlL = tlGroupR.clone();
+  tlL.position.z = -lightZOffset * 0.85;
+  carVisualGroup.add(tlR);
+  carVisualGroup.add(tlL);
+  
+} else if (carId === "tofas_sahin") {
+  // Boxy multi-segment flat taillights
+  const tlGroupR = new THREE.Group();
+  const baseGeo = new THREE.BoxGeometry(0.04, 0.15, 0.44);
+  const base = new THREE.Mesh(baseGeo, carbonMat);
+  tlGroupR.add(base);
+  
+  // Section 1: Red braking block
+  const brakeGeo = new THREE.BoxGeometry(0.015, 0.11, 0.16);
+  const brake = new THREE.Mesh(brakeGeo, glowTaillightMat);
+  brake.position.set(-0.014, 0, -0.1);
+  tlGroupR.add(brake);
+  
+  // Section 2: Amber indicator
+  const indGeo = new THREE.BoxGeometry(0.015, 0.11, 0.12);
+  const ind = new THREE.Mesh(indGeo, new THREE.MeshBasicMaterial({ color: 0xff5d00 }));
+  ind.position.set(-0.014, 0, 0.03);
+  tlGroupR.add(ind);
+  
+  // Section 3: Reverse light
+  const revGeo = new THREE.BoxGeometry(0.015, 0.11, 0.1);
+  const rev = new THREE.Mesh(revGeo, glowHeadlightMat);
+  rev.position.set(-0.014, 0, 0.13);
+  tlGroupR.add(rev);
+  
+  tlGroupR.position.set(-carLength/2 - 0.02, 0.42 + carHeight * 0.38, lightZOffset);
+  
+  const tlR = tlGroupR;
+  const tlL = tlGroupR.clone();
+  tlL.position.z = -lightZOffset;
+  // mirror the sections for Left taillight
+  tlL.children[1].position.z = 0.1;
+  tlL.children[3].position.z = -0.13;
+  carVisualGroup.add(tlR);
+  carVisualGroup.add(tlL);
+  
+} else if (carId === "bmw_m3") {
+  // Dynamic aggressive L-shape sport taillights
+  const tlGroupR = new THREE.Group();
+  const baseGeo = new THREE.BoxGeometry(0.05, 0.12, 0.42);
+  const base = new THREE.Mesh(baseGeo, carbonMat);
+  tlGroupR.add(base);
+  
+  const ledGeo = new THREE.BoxGeometry(0.015, 0.08, 0.36);
+  const led = new THREE.Mesh(ledGeo, glowTaillightMat);
+  led.position.set(-0.019, 0, -0.01);
+  tlGroupR.add(led);
+  
+  // Small amber indicators next to it
+  const indGeo = new THREE.BoxGeometry(0.015, 0.04, 0.06);
+  const ind = new THREE.Mesh(indGeo, new THREE.MeshBasicMaterial({ color: 0xff3d00 }));
+  ind.position.set(-0.019, 0.02, 0.15);
+  tlGroupR.add(ind);
+  
+  tlGroupR.position.set(-carLength/2 - 0.02, 0.42 + carHeight * 0.34, lightZOffset - 0.04);
+  tlGroupR.rotation.y = 0.08;
+  
+  const tlR = tlGroupR;
+  const tlL = tlGroupR.clone();
+  tlL.position.z = -lightZOffset + 0.04;
+  tlL.rotation.y = -0.08;
+  carVisualGroup.add(tlR);
+  carVisualGroup.add(tlL);
+  
+} else if (carId === "tesla_model_s") {
+  // Futuristic full-width dynamic LED lightbar across trunk
+  const lightBarGeo = new THREE.BoxGeometry(0.05, 0.05, bodyWidth * 0.95);
+  const lightBar = new THREE.Mesh(lightBarGeo, glowTaillightMat);
+  lightBar.position.set(-carLength/2 - 0.01, 0.42 + carHeight * 0.33, 0);
+  carVisualGroup.add(lightBar);
+  
+  // Inner metallic chrome underline trim accent
+  const chromeTrimGeo = new THREE.BoxGeometry(0.03, 0.02, bodyWidth * 0.92);
+  const chromeTrim = new THREE.Mesh(chromeTrimGeo, chromeMat);
+  chromeTrim.position.set(-carLength/2, 0.42 + carHeight * 0.29, 0);
+  carVisualGroup.add(chromeTrim);
+  
+} else if (carId === "ferrari") {
+  // Iconic F40 Quad Circular Taillights inside black rear mesh mesh housing
+  const tlHousingGeo = new THREE.BoxGeometry(0.04, 0.18, bodyWidth * 0.88);
+  const tlHousing = new THREE.Mesh(tlHousingGeo, carbonMat);
+  tlHousing.position.set(-carLength/2 - 0.01, 0.42 + carHeight * 0.35, 0);
+  carVisualGroup.add(tlHousing);
+  
+  const lampGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.02, 12);
+  lampGeo.rotateZ(Math.PI/2);
+  
+  // Right Outer Red
+  const rOuter = new THREE.Mesh(lampGeo, glowTaillightMat);
+  rOuter.position.set(-carLength/2 - 0.02, 0.42 + carHeight * 0.35, bodyWidth * 0.32);
+  
+  // Right Inner Amber
+  const rInner = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({ color: 0xff9100 }));
+  rInner.position.set(-carLength/2 - 0.02, 0.42 + carHeight * 0.35, bodyWidth * 0.18);
+  
+  // Left Outer Red
+  const lOuter = rOuter.clone();
+  lOuter.position.z = -bodyWidth * 0.32;
+  
+  // Left Inner Amber
+  const lInner = rInner.clone();
+  lInner.position.z = -bodyWidth * 0.18;
+  
+  carVisualGroup.add(rOuter);
+  carVisualGroup.add(rInner);
+  carVisualGroup.add(lOuter);
+  carVisualGroup.add(lInner);
+}
 
-// 5. CARBON FIBER GT SPOILER WING
-const spoilerGroup = new THREE.Group();
-spoilerGroup.position.set(-carLength/2 + 0.4, 0.42 + carHeight, 0);
+// 5. CARBON FIBER GT SPOILER WING OR LIP DESIGN
+if (carId === "ferrari") {
+  // The legendary F40 integrated rear wing spoiler
+  const spoilerGroup = new THREE.Group();
+  spoilerGroup.position.set(-carLength/2 + 0.35, 0.42 + carHeight * 0.38, 0);
+  
+  // Massive main wing blade
+  const bladeGeo = new THREE.BoxGeometry(0.38, 0.05, bodyWidth * 1.15);
+  const blade = new THREE.Mesh(bladeGeo, carBodyMat); // Body painted red wing!
+  blade.position.y = 0.52;
+  blade.rotation.z = 0.06;
+  spoilerGroup.add(blade);
+  
+  // Under wing carbon aero flap
+  const flapGeo = new THREE.BoxGeometry(0.36, 0.015, bodyWidth * 1.12);
+  const flap = new THREE.Mesh(flapGeo, carbonMat);
+  flap.position.set(-0.01, 0.49, 0);
+  spoilerGroup.add(flap);
+  
+  // Strong side struts (acting as the massive outer vertical F40 panels)
+  const strutGeo = new THREE.BoxGeometry(0.38, 0.52, 0.04);
+  const strutL = new THREE.Mesh(strutGeo, carBodyMat);
+  strutL.position.set(0, 0.26, bodyWidth * 0.55);
+  const strutR = strutL.clone();
+  strutR.position.z = -bodyWidth * 0.55;
+  spoilerGroup.add(strutL);
+  spoilerGroup.add(strutR);
+  
+  carVisualGroup.add(spoilerGroup);
+  
+} else if (carId === "bmw_m3" || carId === "tofas_sahin" || carId === "tesla_model_s") {
+  // Sleek racing lip spoiler
+  const scaleW = (carId === "tofas_sahin") ? 1.0 : 0.96;
+  const lipGeo = new THREE.BoxGeometry(0.18, 0.06, bodyWidth * scaleW);
+  const lip = new THREE.Mesh(lipGeo, carbonMat);
+  lip.position.set(-carLength/2 + 0.1, 0.42 + carHeight * 0.42, 0);
+  lip.rotation.z = 0.1;
+  carVisualGroup.add(lip);
+}
 
-const wingGeo = new THREE.BoxGeometry(0.32, 0.06, carWidth * 0.98);
-const wing = new THREE.Mesh(wingGeo, carbonMat);
-wing.position.y = 0.42;
-wing.rotation.z = 0.08; // downforce slant
-spoilerGroup.add(wing);
+// 6. TAIL EXHAUSTS (Tesla is electric, gets none)
+if (carId !== "tesla_model_s") {
+  const pipeGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.38, 8);
+  pipeGeo.rotateZ(Math.PI/2);
+  
+  if (carId === "ferrari") {
+    // F40 Triple exhaust pipes cluster in the exact center!
+    const tripleGroup = new THREE.Group();
+    tripleGroup.position.set(-carLength/2 - 0.12, 0.28, 0);
+    
+    // Middle thin pipe (wastegate)
+    const midGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.4, 8);
+    midGeo.rotateZ(Math.PI/2);
+    const midExhaust = new THREE.Mesh(midGeo, alloyMat);
+    midExhaust.position.set(0, 0, 0);
+    tripleGroup.add(midExhaust);
+    
+    // Left outer pipe
+    const leftExhaust = new THREE.Mesh(pipeGeo, alloyMat);
+    leftExhaust.position.set(0, 0, -0.11);
+    tripleGroup.add(leftExhaust);
+    
+    // Right outer pipe
+    const rightExhaust = leftExhaust.clone();
+    rightExhaust.position.set(0, 0, 0.11);
+    tripleGroup.add(rightExhaust);
+    
+    carVisualGroup.add(tripleGroup);
+    
+  } else if (carId === "bmw_m3") {
+    // Quad Chrome performance exhausts (Dual split right & left)
+    const exhaustL1 = new THREE.Mesh(pipeGeo, alloyMat);
+    exhaustL1.position.set(-carLength/2 - 0.12, 0.28, bodyWidth * 0.25);
+    const exhaustL2 = exhaustL1.clone();
+    exhaustL2.position.z = bodyWidth * 0.14;
+    
+    const exhaustR1 = exhaustL1.clone();
+    exhaustR1.position.z = -bodyWidth * 0.25;
+    const exhaustR2 = exhaustL1.clone();
+    exhaustR2.position.z = -bodyWidth * 0.14;
+    
+    carVisualGroup.add(exhaustL1);
+    carVisualGroup.add(exhaustL2);
+    carVisualGroup.add(exhaustR1);
+    carVisualGroup.add(exhaustR2);
+    
+  } else if (carId === "tofas_sahin") {
+    // Dual chrome exhaust on the left side
+    const exhaust1 = new THREE.Mesh(pipeGeo, alloyMat);
+    exhaust1.position.set(-carLength/2 - 0.12, 0.26, bodyWidth * 0.22);
+    const exhaust2 = exhaust1.clone();
+    exhaust2.position.z = bodyWidth * 0.12;
+    
+    carVisualGroup.add(exhaust1);
+    carVisualGroup.add(exhaust2);
+    
+  } else if (carId === "rust_bucket") {
+    // Single vintage rust/grey exhaust pipe
+    const steelRustyMat = new THREE.MeshStandardMaterial({ color: 0x5a545c, roughness: 0.7, metalness: 0.6 });
+    const singleGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.42, 6);
+    singleGeo.rotateZ(Math.PI/2);
+    const vintageExhaust = new THREE.Mesh(singleGeo, steelRustyMat);
+    vintageExhaust.position.set(-carLength/2 - 0.14, 0.25, bodyWidth * 0.24);
+    carVisualGroup.add(vintageExhaust);
+  }
+}
 
-const postGeo = new THREE.BoxGeometry(0.12, 0.42, 0.1);
-const postR = new THREE.Mesh(postGeo, carbonMat);
-postR.position.set(-0.06, 0.21, carWidth * 0.36);
-const postL = postR.clone();
-postL.position.z = -carWidth * 0.36;
-spoilerGroup.add(postR);
-spoilerGroup.add(postL);
+// 6.5 LICENSE PLATES
+const plateBoxGeo = new THREE.BoxGeometry(0.015, 0.14, 0.52);
+const frontPlate = new THREE.Mesh(plateBoxGeo, plateMat);
+frontPlate.position.set(carLength/2 + 0.052, 0.44, 0);
+carVisualGroup.add(frontPlate);
 
-carVisualGroup.add(spoilerGroup);
+const rearPlate = frontPlate.clone();
+rearPlate.position.set(-carLength/2 - 0.052, 0.44, 0);
+rearPlate.rotation.y = Math.PI;
+carVisualGroup.add(rearPlate);
 
-// 6. DECORATIVE CHROME EXHAUST PIPES
-const pipeGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.4, 8);
-pipeGeo.rotateZ(Math.PI/2);
-const exhaustR = new THREE.Mesh(pipeGeo, alloyMat);
-exhaustR.position.set(-carLength/2 - 0.1, 0.48, carWidth * 0.25);
-const exhaustL = exhaustR.clone();
-exhaustL.position.z = -carWidth * 0.25;
-carVisualGroup.add(exhaustR);
-carVisualGroup.add(exhaustL);
 
-// 7. NEON RED UNDERGLOW
-const underglowR = new THREE.Mesh(new THREE.BoxGeometry(carLength * 0.6, 0.02, 0.05), neonGlowMat);
-underglowR.position.set(0, 0.08, carWidth/2 - 0.05);
-const underglowL = underglowR.clone();
-underglowL.position.z = -carWidth/2 + 0.05;
-carVisualGroup.add(underglowR);
-carVisualGroup.add(underglowL);
+// 7. NEON UNDERGLOW DYNAMICS
+let underglowColor = 0xff3d00; // Red
+if (carId === "tesla_model_s") underglowColor = 0x00e5ff; // Cyan
+else if (carId === "bmw_m3") underglowColor = 0x2979ff; // Blue
+else if (carId === "rust_bucket") underglowColor = 0x000000; // None
 
-const underglowPointlight = new THREE.PointLight(0xff3d00, 2.2, 8, 1.8);
-underglowPointlight.position.set(0, 0.15, 0);
-carVisualGroup.add(underglowPointlight);
+if (underglowColor !== 0x000000) {
+  const neonGlowMatCustom = new THREE.MeshBasicMaterial({ color: underglowColor, transparent: true, opacity: 0.75 });
+  const underglowR = new THREE.Mesh(new THREE.BoxGeometry(carLength * 0.65, 0.02, 0.05), neonGlowMatCustom);
+  underglowR.position.set(0, 0.08, carWidth/2 - 0.05);
+  const underglowL = underglowR.clone();
+  underglowL.position.z = -carWidth/2 + 0.05;
+  carVisualGroup.add(underglowR);
+  carVisualGroup.add(underglowL);
+
+  const underglowPointlight = new THREE.PointLight(underglowColor, 2.5, 10, 1.8);
+  underglowPointlight.position.set(0, 0.15, 0);
+  carVisualGroup.add(underglowPointlight);
+}
 
 
 // ── PROCEDURAL SCENE ARCHITECTURE (SUNSET HIGHWAY) ───────────────────────────
@@ -824,13 +1766,14 @@ scene.add(railR);
 
 
 // ── PROCEDURAL BUILDING BUILDER ──────────────────────────────────────────────
-function createProceduralBuilding(x, z, w, d, h, baseMat) {
+// Generates single-mesh buildings using the 5 shared canvas textures (reduces draw calls from 3,000+ to under 100!)
+function createProceduralBuilding(x, z, w, d, h, matIndex) {
   const group = new THREE.Group();
   group.position.set(x, h/2, z);
   
-  // Concrete chassis
+  // Concrete chassis with the procedurally mapped window texture
   const shellGeo = new THREE.BoxGeometry(w, h, d);
-  const shell = new THREE.Mesh(shellGeo, baseMat);
+  const shell = new THREE.Mesh(shellGeo, buildingMaterials[matIndex]);
   shell.castShadow = true;
   shell.receiveShadow = true;
   group.add(shell);
@@ -865,51 +1808,30 @@ function createProceduralBuilding(x, z, w, d, h, baseMat) {
     group.add(neonLine);
   }
   
-  // High detail glowing window arrays
-  const rows = Math.floor(h / 4);
-  const cols = Math.floor(w / 3.5);
-  const winGeo = new THREE.BoxGeometry(0.9, 1.5, d + 0.08);
-  
-  const windowLitMaterialChoices = [winLitYellow, winLitCyan, winLitOrange];
-  const choice = windowLitMaterialChoices[Math.floor(Math.random() * windowLitMaterialChoices.length)];
-  
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const isLit = Math.random() > 0.45;
-      const wMesh = new THREE.Mesh(winGeo, isLit ? choice : winDark);
-      
-      const px = -w/2 + 1.8 + c * 3.5;
-      const py = -h/2 + 2.5 + r * 4;
-      
-      wMesh.position.set(px, py, 0);
-      group.add(wMesh);
-    }
-  }
-  
   scene.add(group);
   return group;
 }
 
-// Building spawn chunk spawner
-function spawnBuildingsChunk(offsetX) {
-  for (let side = -1; side <= 1; side += 2) {
-    for (let i = 0; i < 6; i++) {
-      const bx = offsetX + i * 20 + Math.random() * 8;
-      const bz = side * (ROAD_WIDTH/2 + 12 + Math.random() * 14 + 10);
-      const bw = 10 + Math.random() * 6;
-      const bd = 10 + Math.random() * 6;
-      const bh = 18 + Math.random() * 45;
-      const mat = buildingMaterials[Math.floor(Math.random() * buildingMaterials.length)];
-      
-      const mesh = createProceduralBuilding(bx, bz, bw, bd, bh, mat);
-      buildings.push({ mesh: mesh, x: bx });
-    }
-  }
-}
-
-// Spawning initial chunks
-for (let b = 0; b < 6; b++) {
-  spawnBuildingsChunk(b * 100 - 150);
+// Spawn exactly 36 buildings total to create a dense, highly detailed skyline
+// Spaced out at 20 units intervals.
+const BUILDING_SPACING = 20;
+for (let i = 0; i < 36; i++) {
+  const side = (i % 2 === 0) ? 1 : -1;
+  const colIndex = Math.floor(i / 2); // 0 to 17
+  
+  const initialX = colIndex * BUILDING_SPACING - 100;
+  const initialZ = side * (ROAD_WIDTH/2 + 12 + Math.random() * 14 + 10);
+  const bw = 11 + Math.random() * 6;
+  const bd = 11 + Math.random() * 6;
+  const bh = 18 + Math.random() * 45;
+  const matIdx = Math.floor(Math.random() * 5);
+  
+  const mesh = createProceduralBuilding(initialX, initialZ, bw, bd, bh, matIdx);
+  buildings.push({
+    mesh: mesh,
+    initialX: initialX,
+    initialZ: initialZ
+  });
 }
 
 
@@ -919,34 +1841,51 @@ const yellowDoubleGeo = new THREE.BoxGeometry(4, 0.015, 0.15);
 const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 const yellowMat = new THREE.MeshBasicMaterial({ color: 0xffcb2f });
 
+// We create exactly 40 road stripes spaced by 12 units
+const STRIPE_SPACING = 12;
 for (let i = 0; i < 40; i++) {
-  const sx = i * 12 - 100;
+  const initialX = i * STRIPE_SPACING - 120;
   
   const dCenterL = new THREE.Mesh(yellowDoubleGeo, yellowMat);
-  dCenterL.position.set(sx, 0.03, -0.15);
+  dCenterL.position.set(initialX, 0.03, -0.15);
   scene.add(dCenterL);
   
   const dCenterR = new THREE.Mesh(yellowDoubleGeo, yellowMat);
-  dCenterR.position.set(sx, 0.03, 0.15);
+  dCenterR.position.set(initialX, 0.03, 0.15);
   scene.add(dCenterR);
   
   const dLeft = new THREE.Mesh(whiteDashGeo, whiteMat);
-  dLeft.position.set(sx, 0.03, ROAD_WIDTH / 4);
+  dLeft.position.set(initialX, 0.03, ROAD_WIDTH / 4);
   scene.add(dLeft);
   
   const dRight = new THREE.Mesh(whiteDashGeo, whiteMat);
-  dRight.position.set(sx, 0.03, -ROAD_WIDTH / 4);
+  dRight.position.set(initialX, 0.03, -ROAD_WIDTH / 4);
   scene.add(dRight);
   
-  stripes.push({ x: sx, meshL: dLeft, meshR: dRight, meshCL: dCenterL, meshCR: dCenterR });
+  stripes.push({
+    initialX: initialX,
+    meshL: dLeft,
+    meshR: dRight,
+    meshCL: dCenterL,
+    meshCR: dCenterR
+  });
 }
 
 
-// ── STREET LIGHTS (WARM SUNSET/NIGHT CONE LIGHTS) ──────────────────────────
+// ── STREET LIGHTS (WARM VOLUMETRIC GLOW CONES - ZERO LIGHT OVERHEAD!) ──────────────────
 const poleGeom = new THREE.CylinderGeometry(0.12, 0.16, 7.5, 8);
 const lampArmGeom = new THREE.BoxGeometry(1.8, 0.2, 0.2);
 const poleMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.85 });
 const lanternGlow = new THREE.MeshBasicMaterial({ color: 0xffb74d });
+
+// Volumetric light beam cone material (stylized, semi-transparent, extremely lightweight)
+const coneMat = new THREE.MeshBasicMaterial({
+  color: 0xffb74d,
+  transparent: true,
+  opacity: 0.16,
+  blending: THREE.AdditiveBlending,
+  side: THREE.DoubleSide
+});
 
 function spawnStreetLight(x, z, rotateArm) {
   const group = new THREE.Group();
@@ -964,22 +1903,27 @@ function spawnStreetLight(x, z, rotateArm) {
   lantern.position.set(rotateArm ? -1.6 : 1.6, 3.55, 0);
   group.add(lantern);
   
-  // Real spotlight projection onto highway
-  const spot = new THREE.SpotLight(0xffb74d, 2.2, 25, Math.PI/3.5, 0.5, 1);
-  spot.position.set(rotateArm ? -1.6 : 1.6, 3.55, 0);
-  const target = new THREE.Object3D();
-  target.position.set(rotateArm ? -1.6 : 1.6, -3.75, 0);
-  group.add(target);
-  spot.target = target;
-  group.add(spot);
+  // Beautiful stylized volumetric light cone shining onto highway
+  const coneGeo = new THREE.CylinderGeometry(0.2, 2.2, 7.5, 12, 1, true);
+  coneGeo.translate(0, -3.75, 0); // Pivot at the top lamp
+  const cone = new THREE.Mesh(coneGeo, coneMat);
+  cone.position.set(rotateArm ? -1.6 : 1.6, 3.55, 0);
+  cone.rotation.z = rotateArm ? -0.15 : 0.15; // tilt towards road
+  group.add(cone);
   
   scene.add(group);
-  streetLights.push({ group: group, x: x });
+  streetLights.push({
+    group: group,
+    initialX: x,
+    initialZ: z
+  });
 }
 
-for (let i = 0; i < 15; i++) {
-  spawnStreetLight(i * 35 - 100, ROAD_WIDTH/2 + 0.8, true);
-  spawnStreetLight(i * 35 - 80, -ROAD_WIDTH/2 - 0.8, false);
+// Spawn exactly 16 streetlights spaced at 35 units (8 on each side)
+const LIGHT_SPACING = 35;
+for (let i = 0; i < 8; i++) {
+  spawnStreetLight(i * LIGHT_SPACING - 120, ROAD_WIDTH/2 + 0.8, true);
+  spawnStreetLight(i * LIGHT_SPACING - 100, -ROAD_WIDTH/2 - 0.8, false);
 }
 
 
@@ -1216,9 +2160,9 @@ function updatePhysics(dt) {
   if (keys.left) steerAngle = STEER_FORCE;
   if (keys.right) steerAngle = -STEER_FORCE;
   
-  // Turn front wheels visually inside their sockets
-  wheels[0].rotation.y = steerAngle * 6.0;
-  wheels[1].rotation.y = steerAngle * 6.0;
+  // Turn front wheels visually inside their sockets (Y-steering)
+  wheels[0].rotation.y = steerAngle * 4.5;
+  wheels[1].rotation.y = steerAngle * 4.5;
   
   if (Math.abs(currentSpeed) > 0.08) {
     const scaleSteer = currentSpeed / MAX_SPEED;
@@ -1262,8 +2206,8 @@ function updatePhysics(dt) {
   distanceTraveled += speedMag * fpsScale;
   wheelSpin += speedMag * 0.35 * fpsScale;
   
-  // Spin wheels based on velocity magnitude
-  wheels.forEach(w => w.rotation.x = wheelSpin);
+  // Spin nested wheel groups on the Z-axis for clean rolling rotation
+  wheelSpinGroups.forEach(w => w.rotation.z = wheelSpin);
   
   // 4. SUSPENSION TILT LEANS (ACTIVE VECHICLE ROLE/PITCH EFFECT)
   // Steer left -> roll body right
@@ -1336,27 +2280,37 @@ function updatePhysics(dt) {
     spawnSmoke(pipeX, 0.48, rightPipeZ, keys.gas ? 1.4 : 0.8, 0.4, 0.4, true);
   }
   
-  // 6. INFINITE CHUNKING / RUNTIME MEMORY RECYCLING
-  if (carX - lastSpawnX > 60) {
-    spawnBuildingsChunk(carX + 400);
-    lastSpawnX = carX;
-    
-    // Move road stripes
-    const nextStripeX = stripes[stripes.length - 1].x + 12;
-    const oldStripe = stripes.shift();
-    oldStripe.x = nextStripeX;
-    oldStripe.meshL.position.x = nextStripeX;
-    oldStripe.meshR.position.x = nextStripeX;
-    oldStripe.meshCL.position.x = nextStripeX;
-    oldStripe.meshCR.position.x = nextStripeX;
-    stripes.push(oldStripe);
-    
-    // Move streetlights
-    const oldLight = streetLights.shift();
-    const nextLightX = streetLights[streetLights.length - 1].x + 35;
-    oldLight.x = nextLightX;
-    oldLight.group.position.x = nextLightX;
-    streetLights.push(oldLight);
+  // ── 6. INFINITE CHUNKING / RUNTIME MATHEMATICAL RECYCLING (O(1) Stateless Modulo) ──
+  // Keep the main roads, sidewalks, guardrails and sun centered on the car
+  roadMesh.position.x = carX;
+  sidewalkL.position.x = carX;
+  sidewalkR.position.x = carX;
+  railL.position.x = carX;
+  railR.position.x = carX;
+  sunMesh.position.x = carX + 500;
+
+  // Recycle road stripes O(1) (40 stripes spaced by 12 = 480 total length)
+  for (let i = 0; i < stripes.length; i++) {
+    const stripe = stripes[i];
+    const nextX = Math.floor((carX - stripe.initialX + 240) / 480) * 480 + stripe.initialX;
+    stripe.meshL.position.x = nextX;
+    stripe.meshR.position.x = nextX;
+    stripe.meshCL.position.x = nextX;
+    stripe.meshCR.position.x = nextX;
+  }
+
+  // Recycle streetlights O(1) (8 lights on each side spaced by 35 = 280 total length)
+  for (let i = 0; i < streetLights.length; i++) {
+    const light = streetLights[i];
+    const nextX = Math.floor((carX - light.initialX + 140) / 280) * 280 + light.initialX;
+    light.group.position.x = nextX;
+  }
+
+  // Recycle buildings O(1) (18 buildings on each side spaced by 20 = 360 total length)
+  for (let i = 0; i < buildings.length; i++) {
+    const building = buildings[i];
+    const nextX = Math.floor((carX - building.initialX + 180) / 360) * 360 + building.initialX;
+    building.mesh.position.x = nextX;
   }
   
   // Recenter lighting shadow to track vehicle position
