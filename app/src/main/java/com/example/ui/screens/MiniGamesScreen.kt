@@ -1570,7 +1570,7 @@ fun DrivingSimulator(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283C)),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text(text = "◀ SOL / LEFT", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                        Text(text = if (lang == "TR") "◀ SOL" else "◀ LEFT", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
                     }
 
                     Button(
@@ -1582,7 +1582,7 @@ fun DrivingSimulator(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283C)),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text(text = "SAĞ / RIGHT ▶", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                        Text(text = if (lang == "TR") "SAĞ ▶" else "RIGHT ▶", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
                     }
                 }
             }

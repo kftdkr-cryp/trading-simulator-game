@@ -514,7 +514,7 @@ fun MarketScreen(
                     if (aiAnalysisLoading) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
                     } else {
-                        Text("Pariteyi Analiz Et / Forecast $selectedAsset", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(if (lang == "TR") "Pariteyi Analiz Et" else "Forecast $selectedAsset", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -541,7 +541,7 @@ fun MarketScreen(
                     OutlinedTextField(
                         value = tradeQuantity,
                         onValueChange = { viewModel.setTradeQuantity(it) },
-                        label = { Text("Miktar / Quantity") },
+                        label = { Text(if (lang == "TR") "Miktar" else "Quantity") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
@@ -812,7 +812,7 @@ fun MarketScreen(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text(
-                            text = "POZİSYON AÇ / OPEN POSITION",
+                            text = if (lang == "TR") "POZİSYON AÇ" else "OPEN POSITION",
                             color = if (leverageIsLong) Color.Black else Color.White,
                             fontWeight = FontWeight.Bold
                         )
@@ -882,15 +882,15 @@ fun MarketScreen(
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
-                                Text("Giriş / Entry", color = Color.Gray, fontSize = 10.sp)
+                                Text(if (lang == "TR") "Giriş" else "Entry", color = Color.Gray, fontSize = 10.sp)
                                 Text("$${String.format("%,.2f", pos.averageEntryPrice)}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                             Column {
-                                Text("Teminat / Margin", color = Color.Gray, fontSize = 10.sp)
+                                Text(if (lang == "TR") "Teminat" else "Margin", color = Color.Gray, fontSize = 10.sp)
                                 Text("$${String.format("%,.2f", pos.margin)}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("Likidasyon / Liq", color = Color(0xFFFF9100), fontSize = 10.sp)
+                                Text(if (lang == "TR") "Likidasyon" else "Liq", color = Color(0xFFFF9100), fontSize = 10.sp)
                                 Text("$${String.format("%,.2f", pos.liquidationPrice)}", color = Color(0xFFFF9100), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }

@@ -149,7 +149,7 @@ fun PortfolioCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Henüz açık pozisyonunuz yok. / No active positions yet.",
+                        text = if (lang == "TR") "Henüz açık pozisyonunuz yok." else "No active positions yet.",
                         color = Color.Gray,
                         fontSize = 13.sp
                     )

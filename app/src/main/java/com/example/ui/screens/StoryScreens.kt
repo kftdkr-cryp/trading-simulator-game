@@ -148,7 +148,7 @@ fun IntroStoryScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (lang == "TR") "GEÇ / SKIP" else "SKIP",
+                            text = if (lang == "TR") "GEÇ" else "SKIP",
                             color = Color.Gray,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
@@ -276,7 +276,7 @@ fun OutroStoryScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (lang == "TR") "SONA GEÇ / SKIP" else "SKIP TO END",
+                                text = if (lang == "TR") "SONA GEÇ" else "SKIP TO END",
                                 color = Color.Gray,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,

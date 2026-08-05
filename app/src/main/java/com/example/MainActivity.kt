@@ -375,7 +375,7 @@ class MainActivity : ComponentActivity() {
                                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                                     ) {
                                                         Text(
-                                                            text = Localizer.translate("dark_mode", lang).split(" / ").first(),
+                                                            text = Localizer.translate("dark_mode", lang),
                                                             color = if (isDarkMode) Color.Black else Color.Gray,
                                                             fontSize = 11.sp,
                                                             fontWeight = FontWeight.Bold
@@ -395,7 +395,7 @@ class MainActivity : ComponentActivity() {
                                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                                     ) {
                                                         Text(
-                                                            text = Localizer.translate("light_mode", lang).split(" / ").first(),
+                                                            text = Localizer.translate("light_mode", lang),
                                                             color = if (!isDarkMode) Color.Black else Color.Gray,
                                                             fontSize = 11.sp,
                                                             fontWeight = FontWeight.Bold
@@ -410,7 +410,7 @@ class MainActivity : ComponentActivity() {
                                                     .fillMaxWidth()
                                                     .height(1.dp)
                                                     .background(if (isDarkMode) Color(0xFF1E273A) else Color(0xFFE2E8F0))
-                                            )
+                                             )
 
                                             // Language Selector Column
                                             Column(
@@ -418,7 +418,7 @@ class MainActivity : ComponentActivity() {
                                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
                                                 Text(
-                                                    text = if (lang == "TR") "Dil Seçimi / Language" else "Select Language",
+                                                    text = if (lang == "TR") "Dil Seçimi" else "Select Language",
                                                     color = themeSubText,
                                                     fontWeight = FontWeight.Medium,
                                                     fontSize = 14.sp

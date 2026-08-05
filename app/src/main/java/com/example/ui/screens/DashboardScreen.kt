@@ -130,7 +130,7 @@ fun DashboardScreen(
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = "GOOGLE SECURE",
+                                text = if (lang == "TR") "GÜVENLİ OTURUM" else "SECURE SESSION",
                                 color = Color(0xFF00E676),
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold
@@ -217,7 +217,7 @@ fun DashboardScreen(
                             fontSize = 14.sp
                         )
                         Text(
-                            text = "Kariyer Hedefiniz / Career Progress",
+                            text = if (lang == "TR") "Kariyer Hedefiniz" else "Career Progress",
                             color = Color.Gray,
                             fontSize = 10.sp
                         )
@@ -289,7 +289,7 @@ fun DashboardScreen(
                             .background(Color(0xFF00E676), CircleShape)
                     )
                     Text(
-                        text = "PİYASA AKTİF / LIVE MARKET",
+                        text = if (lang == "TR") "PİYASA AKTİF" else "LIVE MARKET",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
@@ -399,7 +399,7 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = "Gameplay Tip",
+                        text = if (lang == "TR") "Oynanış İpucu" else "Gameplay Tip",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp

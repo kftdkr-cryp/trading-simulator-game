@@ -112,7 +112,7 @@ object Localizer {
             "AZ" to "Sıralama"
         ),
         "mini_games" to mapOf(
-            "TR" to "İşler / Oyunlar",
+            "TR" to "İşler & Oyunlar",
             "EN" to "Jobs & Games",
             "HI" to "काम और गेम्स",
             "ZH" to "任务与游戏",
@@ -166,7 +166,7 @@ object Localizer {
             "AZ" to "Kaldıraçlı Ticarət"
         ),
         "buy" to mapOf(
-            "TR" to "AL / BUY",
+            "TR" to "AL",
             "EN" to "BUY",
             "HI" to "खरीदें",
             "ZH" to "买入",
@@ -175,7 +175,7 @@ object Localizer {
             "AZ" to "AL"
         ),
         "sell" to mapOf(
-            "TR" to "SAT / SELL",
+            "TR" to "SAT",
             "EN" to "SELL",
             "HI" to "बेचें",
             "ZH" to "卖出",
@@ -256,8 +256,8 @@ object Localizer {
             "AZ" to "Qrafik İndikatorları"
         ),
         "drawing_tools" to mapOf(
-            "TR" to "Çizim Araçları (Çiz / Temizle)",
-            "EN" to "Drawing Tools (Draw / Clear)",
+            "TR" to "Çizim Araçları (Çiz & Temizle)",
+            "EN" to "Drawing Tools (Draw & Clear)",
             "HI" to "ड्राइंग टूल्स (बनाएं / साफ करें)",
             "ZH" to "画线工具 (绘制 / 清除)",
             "FR" to "Outils de Dessin (Dessiner / Effacer)",
@@ -319,7 +319,7 @@ object Localizer {
             "AZ" to "Ekranda uçuşan yaşıl loqolara toxunaraq xal qazan, qırmızı zəhərli 'Likidasiya' loqolarından uzaq dur!"
         ),
         "play" to mapOf(
-            "TR" to "OYNA / PLAY",
+            "TR" to "OYNA",
             "EN" to "PLAY",
             "HI" to "खेलें",
             "ZH" to "开始玩",
@@ -364,7 +364,7 @@ object Localizer {
             "TH" to "เล่นอีกครั้ง"
         ),
         "settings_title" to mapOf(
-            "TR" to "Ayarlar / Settings",
+            "TR" to "Ayarlar",
             "EN" to "Settings",
             "ES" to "Ajustes",
             "DE" to "Einstellungen",
@@ -376,7 +376,7 @@ object Localizer {
             "TH" to "การตั้งค่า"
         ),
         "theme_mode" to mapOf(
-            "TR" to "Tema Modu / Theme",
+            "TR" to "Tema Modu",
             "EN" to "Theme Mode",
             "ES" to "Modo de tema",
             "DE" to "Themamodus",
@@ -388,7 +388,7 @@ object Localizer {
             "TH" to "โหมดธีม"
         ),
         "dark_mode" to mapOf(
-            "TR" to "Koyu Tema / Dark",
+            "TR" to "Koyu Tema",
             "EN" to "Dark Mode",
             "ES" to "Modo oscuro",
             "DE" to "Dunkelmodus",
@@ -400,7 +400,7 @@ object Localizer {
             "TH" to "โหมดมืด"
         ),
         "light_mode" to mapOf(
-            "TR" to "Açık Tema / Light",
+            "TR" to "Açık Tema",
             "EN" to "Light Mode",
             "ES" to "Modo claro",
             "DE" to "Hellmodus",
@@ -412,7 +412,7 @@ object Localizer {
             "TH" to "โหมดสว่าง"
         ),
         "close" to mapOf(
-            "TR" to "Kapat / Close",
+            "TR" to "Kapat",
             "EN" to "Close",
             "ES" to "Cerrar",
             "DE" to "Schließen",

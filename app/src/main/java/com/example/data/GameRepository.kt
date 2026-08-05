@@ -111,11 +111,17 @@ class GameRepository(private val db: AppDatabase) {
             getOrInitSettings()
 
             // 3. Populate Initial System News
+            val lang = settingsDao.getSettings()?.selectedLanguage ?: "TR"
+            val initialMessage = if (lang == "TR") {
+                "Simülasyon başladı! 200 yapay zeka yatırımcı aktif şekilde piyasada işlem yapıyor. Sıfır sermaye ile başlayıp mini oyunlarla fon kazanın, spot veya kaldıraçlı borsa işlemlerinde zirveye oynayın!"
+            } else {
+                "Simulation started! 200 AI traders are active. Start with zero capital, earn funds via mini games, and play for the top in spot or leverage trading!"
+            }
             newsDao.insertNews(
                 NewsLog(
                     timestamp = System.currentTimeMillis(),
-                    traderName = "SİSTEM / SYSTEM",
-                    message = "Simülasyon başladı! 200 yapay zeka yatırımcı aktif şekilde piyasada işlem yapıyor. Sıfır sermaye ile başlayıp mini oyunlarla fon kazanın, spot veya kaldıraçlı borsa işlemlerinde zirveye oynayın!",
+                    traderName = if (lang == "TR") "SİSTEM" else "SYSTEM",
+                    message = initialMessage,
                     symbol = "GENEL",
                     isSystemNews = true
                 )
@@ -338,11 +344,17 @@ class GameRepository(private val db: AppDatabase) {
                         traderDao.deletePosition(pos)
                         
                         // Publish breaking liquidation news
+                        val lang = settingsDao.getSettings()?.selectedLanguage ?: "TR"
+                        val liqMessage = if (lang == "TR") {
+                            "🚨 LİKİDASYON ALARMI: Siz (Kullanıcı), $${String.format("%.2f", currentPrice)} fiyattan $${String.format("%.2f", pos.liquidationPrice)} Likidasyon sınırına çarparak $${String.format("%.2f", pos.margin)} değerindeki kaldıraçlı ${if (pos.isLong) "LONG" else "SHORT"} pozisyonunuzu kaybettiniz!"
+                        } else {
+                            "🚨 LIQUIDATION ALERT: You (User) hit the liquidation level of $${String.format("%.2f", pos.liquidationPrice)} at $${String.format("%.2f", currentPrice)} and lost your leveraged ${if (pos.isLong) "LONG" else "SHORT"} position with a margin of $${String.format("%.2f", pos.margin)}!"
+                        }
                         newsDao.insertNews(
                             NewsLog(
                                 timestamp = System.currentTimeMillis(),
-                                traderName = "KARA KUTU / LIQUIDATION",
-                                message = "🚨 LİKİDASYON ALARMI: Siz (Kullanıcı), $${String.format("%.2f", currentPrice)} fiyattan $${String.format("%.2f", pos.liquidationPrice)} Likidasyon sınırına çarparak $${String.format("%.2f", pos.margin)} değerindeki kaldıraçlı ${if (pos.isLong) "LONG" else "SHORT"} pozisyonunuzu kaybettiniz!",
+                                traderName = if (lang == "TR") "KARA KUTU" else "LIQUIDATION",
+                                message = liqMessage,
                                 symbol = pos.symbol,
                                 isSystemNews = true
                             )
@@ -383,12 +395,22 @@ class GameRepository(private val db: AppDatabase) {
                             }
                             traderDao.deletePosition(pos)
 
-                            val triggerLabel = if (isTpTriggered) "TAKE PROFIT (Kâr Al)" else "STOP LOSS (Zarar Durdur)"
+                            val lang = settingsDao.getSettings()?.selectedLanguage ?: "TR"
+                            val triggerLabel = if (lang == "TR") {
+                                if (isTpTriggered) "KÂR AL (TP)" else "ZARAR DURDUR (SL)"
+                            } else {
+                                if (isTpTriggered) "TAKE PROFIT (TP)" else "STOP LOSS (SL)"
+                            }
+                            val orderMessage = if (lang == "TR") {
+                                "⚡ $triggerLabel TETİKLENDİ: Kaldıraçlı ${if (pos.isLong) "LONG" else "SHORT"} pozisyonunuz $${String.format("%.2f", currentPrice)} fiyattan kapatıldı. Kâr/Zarar: $${String.format("%.2f", pnl)}, Cüzdana Eklenen Nakit: $${String.format("%.2f", returnedCash)}"
+                            } else {
+                                "⚡ $triggerLabel TRIGGERED: Your leveraged ${if (pos.isLong) "LONG" else "SHORT"} position was closed at $${String.format("%.2f", currentPrice)}. PnL: $${String.format("%.2f", pnl)}, Cash returned: $${String.format("%.2f", returnedCash)}"
+                            }
                             newsDao.insertNews(
                                 NewsLog(
                                     timestamp = System.currentTimeMillis(),
-                                    traderName = "ALGORİTMİK EMİR / ORDER",
-                                    message = "⚡ $triggerLabel TETİKLENDİ: Kaldıraçlı ${if (pos.isLong) "LONG" else "SHORT"} pozisyonunuz $${String.format("%.2f", currentPrice)} fiyattan kapatıldı. Kâr/Zarar: $${String.format("%.2f", pnl)}, Cüzdana Eklenen Nakit: $${String.format("%.2f", returnedCash)}",
+                                    traderName = if (lang == "TR") "ALGORİTMİK EMİR" else "ALGORITHMIC ORDER",
+                                    message = orderMessage,
                                     symbol = pos.symbol,
                                     isSystemNews = true
                                 )
@@ -422,12 +444,22 @@ class GameRepository(private val db: AppDatabase) {
                         }
                         traderDao.deletePosition(pos)
 
-                        val triggerLabel = if (isTpTriggered) "TAKE PROFIT (Kâr Al)" else "STOP LOSS (Zarar Durdur)"
+                        val lang = settingsDao.getSettings()?.selectedLanguage ?: "TR"
+                        val triggerLabel = if (lang == "TR") {
+                            if (isTpTriggered) "KÂR AL (TP)" else "ZARAR DURDUR (SL)"
+                        } else {
+                            if (isTpTriggered) "TAKE PROFIT (TP)" else "STOP LOSS (SL)"
+                        }
+                        val spotOrderMessage = if (lang == "TR") {
+                            "⚡ $triggerLabel TETİKLENDİ: Spot ${pos.symbol} pozisyonunuzun tamamı (${String.format("%.4f", pos.quantity)} adet) $${String.format("%.2f", currentPrice)} fiyattan satıldı. Gelir: $${String.format("%.2f", sellProceeds)} (Kâr/Zarar: $${String.format("%.2f", pnl)})"
+                        } else {
+                            "⚡ $triggerLabel TRIGGERED: Your entire Spot ${pos.symbol} position (${String.format("%.4f", pos.quantity)} units) was sold at $${String.format("%.2f", currentPrice)}. Revenue: $${String.format("%.2f", sellProceeds)} (PnL: $${String.format("%.2f", pnl)})"
+                        }
                         newsDao.insertNews(
                             NewsLog(
                                 timestamp = System.currentTimeMillis(),
-                                traderName = "ALGORİTMİK EMİR / ORDER",
-                                message = "⚡ $triggerLabel TETİKLENDİ: Spot ${pos.symbol} pozisyonunuzun tamamı (${String.format("%.4f", pos.quantity)} adet) $${String.format("%.2f", currentPrice)} fiyattan satıldı. Gelir: $${String.format("%.2f", sellProceeds)} (Kâr/Zarar: $${String.format("%.2f", pnl)})",
+                                traderName = if (lang == "TR") "ALGORİTMİK EMİR" else "ALGORITHMIC ORDER",
+                                message = spotOrderMessage,
                                 symbol = pos.symbol,
                                 isSystemNews = true
                             )
@@ -437,12 +469,18 @@ class GameRepository(private val db: AppDatabase) {
             }
 
             // Check Debt Threshold Warnings
+            val lang = settingsDao.getSettings()?.selectedLanguage ?: "TR"
             if (player.cash <= -1000.0 && !warn1000Sent) {
+                val warningMsg = if (lang == "TR") {
+                    "⚠️ UYARI: Net nakit bakiyeniz -1000$'ın altına düştü! Borçlarınızı kapatmak için acilen kârlı işlemler yapmalı veya mini işlerde çalışmalısınız."
+                } else {
+                    "⚠️ WARNING: Your net cash balance has dropped below -$1000! You must urgently make profitable trades or work in mini-jobs to cover your debts."
+                }
                 newsDao.insertNews(
                     NewsLog(
                         timestamp = System.currentTimeMillis(),
-                        traderName = "FİNANSAL DANIŞMAN / ADVISOR",
-                        message = "⚠️ UYARI: Net nakit bakiyeniz -1000$'ın altına düştü! Borçlarınızı kapatmak için acilen kârlı işlemler yapmalı veya mini işlerde çalışmalısınız.",
+                        traderName = if (lang == "TR") "FİNANSAL DANIŞMAN" else "FINANCIAL ADVISOR",
+                        message = warningMsg,
                         symbol = "PORTFOLIO",
                         isSystemNews = true
                     )
@@ -453,11 +491,16 @@ class GameRepository(private val db: AppDatabase) {
             }
 
             if (player.cash <= -2000.0 && !warn2000Sent) {
+                val criticalMsg = if (lang == "TR") {
+                    "🚨 KRİTİK UYARI: Nakit borcunuz -2000$'ı aştı! Açlık sınırındasınız. Bakiye -3000$'a ulaşırsa borçlarınız sizi aç ve hasta bırakacak, hayati risk oluşacaktır!"
+                } else {
+                    "🚨 CRITICAL WARNING: Your cash debt has exceeded -$2000! You are near the hunger limit. If the balance reaches -$3000, your debts will leave you hungry and sick, creating a fatal risk!"
+                }
                 newsDao.insertNews(
                     NewsLog(
                         timestamp = System.currentTimeMillis(),
-                        traderName = "BANKA HUKUK DEPT / BANK",
-                        message = "🚨 KRİTİK UYARI: Nakit borcunuz -2000$'ı aştı! Açlık sınırındasınız. Bakiye -3000$'a ulaşırsa borçlarınız sizi aç ve hasta bırakacak, hayati risk oluşacaktır!",
+                        traderName = if (lang == "TR") "BANKA HUKUK DEPT" else "BANK LEGAL DEPT",
+                        message = criticalMsg,
                         symbol = "PORTFOLIO",
                         isSystemNews = true
                     )
@@ -672,21 +715,33 @@ class GameRepository(private val db: AppDatabase) {
                     furniture = ""
                     foodId = 1
                     
+                    val lang = settings.selectedLanguage
+                    val icraMessage = if (lang == "TR") {
+                        "🚨 EV BOŞALTMA VE HACİZ ALARMI: Toplam borcunuz $${String.format("%.2f", p.cash - totalExpenses)} seviyesine ulaştı ve faturalarınızı ödeyemediniz! Ev sahibi sizi dışarı attı, tüm mobilyalarınıza el konuldu ve $100 nakit ile en kötü gecekonduya taşınmak zorunda kaldınız!"
+                    } else {
+                        "🚨 EVICTION AND SEIZURE ALERT: Your total debt reached $${String.format("%.2f", p.cash - totalExpenses)} and you failed to pay your bills! The landlord evicted you, all your furniture was seized, and you were forced to move to the poorest slum with only $100 cash!"
+                    }
                     newsDao.insertNews(
                         NewsLog(
                             timestamp = System.currentTimeMillis(),
-                            traderName = "SİSTEM / İCRA",
-                            message = "🚨 EV BOŞALTMA VE HACİZ ALARMI: Toplam borcunuz $${String.format("%.2f", p.cash - totalExpenses)} seviyesine ulaştı ve faturalarınızı ödeyemediniz! Ev sahibi sizi dışarı attı, tüm mobilyalarınıza el konuldu ve $100 nakit ile en kötü gecekonduya taşınmak zorunda kaldınız!",
+                            traderName = if (lang == "TR") "SİSTEM (İCRA)" else "SYSTEM (EVICTION)",
+                            message = icraMessage,
                             symbol = "GENEL",
                             isSystemNews = true
                         )
                     )
                 } else {
+                    val lang = settings.selectedLanguage
+                    val monthEndMessage = if (lang == "TR") {
+                        "📆 Yeni aya geçildi! Kira: $${String.format("%.2f", rent)}, Faturalar: $${String.format("%.2f", bills)}, Yemek: $${String.format("%.2f", food)}.${if (hasMiningRig) " Mining Rig pasif gelir: +$150.00" else ""} Hesabınızdan net $${String.format("%.2f", totalExpenses)} kesildi."
+                    } else {
+                        "📆 A new month has started! Rent: $${String.format("%.2f", rent)}, Bills: $${String.format("%.2f", bills)}, Food: $${String.format("%.2f", food)}.${if (hasMiningRig) " Mining Rig passive income: +$150.00" else ""} Net -$${String.format("%.2f", totalExpenses)} was deducted from your account."
+                    }
                     newsDao.insertNews(
                         NewsLog(
                             timestamp = System.currentTimeMillis(),
-                            traderName = "SİSTEM / AY BAŞI",
-                            message = "📆 Yeni aya geçildi! Kira: $${String.format("%.2f", rent)}, Faturalar: $${String.format("%.2f", bills)}, Yemek: $${String.format("%.2f", food)}.${if (hasMiningRig) " Mining Rig pasif gelir: +$150.00" else ""} Hesabınızdan net $${String.format("%.2f", totalExpenses)} kesildi.",
+                            traderName = if (lang == "TR") "SİSTEM (AY BAŞI)" else "SYSTEM (MONTH END)",
+                            message = monthEndMessage,
                             symbol = "GENEL",
                             isSystemNews = true
                         )
