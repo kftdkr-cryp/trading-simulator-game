@@ -67,6 +67,9 @@ class GameViewModel(
     val settingsState: StateFlow<GameSettings?> = repository.settingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val offersState: StateFlow<List<GameOffer>> = repository.offersState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val activeCandles: StateFlow<List<MarketCandle>> = _selectedAsset
         .flatMapLatest { symbol -> repository.getCandlesFlow(symbol) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -170,6 +173,14 @@ class GameViewModel(
 
     fun cancelPropertyListing(propId: String) {
         viewModelScope.launch { repository.cancelPropertyListing(propId) }
+    }
+
+    fun acceptOffer(offerId: String) {
+        viewModelScope.launch { repository.acceptOffer(offerId) }
+    }
+
+    fun rejectOffer(offerId: String) {
+        viewModelScope.launch { repository.rejectOffer(offerId) }
     }
 
     // ────────────────────────────────────────────────────────────────────────

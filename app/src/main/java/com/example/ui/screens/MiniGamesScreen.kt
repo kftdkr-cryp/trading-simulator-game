@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.GameViewModel
 import com.example.ui.Localizer
+import com.example.data.GameOffer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.cos
@@ -42,6 +43,7 @@ import kotlin.random.Random
 fun MiniGamesScreen(viewModel: GameViewModel) {
     val settings by viewModel.settingsState.collectAsState()
     val playerTrader by viewModel.playerTraderState.collectAsState()
+    val offers by viewModel.offersState.collectAsState()
     
     val lang = settings?.selectedLanguage ?: "TR"
     val cash = playerTrader?.cash ?: 0.0
@@ -150,15 +152,19 @@ fun MiniGamesScreen(viewModel: GameViewModel) {
                             currentHouseId = currentHouseId,
                             furnitureBought = furnitureBought,
                             foodPlanId = foodPlanId,
+                            listedProperties = listedProperties,
                             cash = cash,
                             lang = lang,
                             onBuyFurniture = { id, name, price -> viewModel.buyFurniture(id, name, price) },
                             onRentOrBuyHouse = { id, price, isPurchase -> viewModel.buyOrRentHouse(id, price, isPurchase) },
-                            onChangeFood = { id, name -> viewModel.changeFoodPlan(id, name) }
+                            onChangeFood = { id, name -> viewModel.changeFoodPlan(id, name) },
+                            onListForSale = { id, price -> viewModel.listPropertyForSale(id, price) },
+                            onCancelListing = { id -> viewModel.cancelPropertyListing(id) }
                         )
                         2 -> GarageTab(
                             ownedCars = ownedCars,
                             activeCarId = activeCarId,
+                            listedProperties = listedProperties,
                             cash = cash,
                             lang = lang,
                             onBuyCar = { id, name, price -> viewModel.buyCar(id, name, price) },
@@ -170,16 +176,20 @@ fun MiniGamesScreen(viewModel: GameViewModel) {
                                 }
                                 context.startActivity(intent)
                             },
-                            onSellCar = { id, name, price -> viewModel.sellCar(id, name, price) }
+                            onListForSale = { id, price -> viewModel.listPropertyForSale(id, price) },
+                            onCancelListing = { id -> viewModel.cancelPropertyListing(id) }
                         )
                         3 -> PropertiesTab(
                             ownedProperties = ownedProperties,
                             listedProperties = listedProperties,
+                            offers = offers,
                             cash = cash,
                             lang = lang,
                             onBuyProperty = { id, name, price -> viewModel.buyProperty(id, name, price) },
                             onListForSale = { id, price -> viewModel.listPropertyForSale(id, price) },
-                            onCancelListing = { id -> viewModel.cancelPropertyListing(id) }
+                            onCancelListing = { id -> viewModel.cancelPropertyListing(id) },
+                            onAcceptOffer = { id -> viewModel.acceptOffer(id) },
+                            onRejectOffer = { id -> viewModel.rejectOffer(id) }
                         )
                     }
                 }
@@ -311,13 +321,24 @@ fun HouseTab(
     currentHouseId: String,
     furnitureBought: String,
     foodPlanId: Int,
+    listedProperties: String,
     cash: Double,
     lang: String,
     onBuyFurniture: (String, String, Double) -> Unit,
     onRentOrBuyHouse: (String, Double, Boolean) -> Unit,
-    onChangeFood: (Int, String) -> Unit
+    onChangeFood: (Int, String) -> Unit,
+    onListForSale: (String, Double) -> Unit,
+    onCancelListing: (String) -> Unit
 ) {
     val furnitureList = furnitureBought.split(",").filter { it.isNotEmpty() }
+    val listedMap = listedProperties.split(",").filter { it.isNotEmpty() }
+        .associate { entry ->
+            val parts = entry.split(":")
+            (parts.getOrNull(0) ?: "") to (parts.getOrNull(1)?.toDoubleOrNull() ?: 0.0)
+        }
+
+    var askingPriceInput by remember { mutableStateOf("") }
+    var listingTargetId by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(
         modifier = Modifier
@@ -478,56 +499,146 @@ fun HouseTab(
 
         items(housesList) { house ->
             val isActive = currentHouseId == house.id
-            Row(
+            val isListed = listedMap.containsKey(house.id)
+            val listedPrice = listedMap[house.id] ?: 0.0
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isListed) Color(0xFF1B2A18) else Color(0xFF0F1422)
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF0F1422), RoundedCornerShape(10.dp))
                     .border(
                         width = if (isActive) 1.5.dp else 1.dp,
-                        color = if (isActive) Color(0xFFFFC107) else Color(0xFF1E283C),
+                        color = if (isActive) Color(0xFFFFC107) else if (isListed) Color(0xFF2E4324) else Color(0xFF1E283C),
                         shape = RoundedCornerShape(10.dp)
                     )
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = house.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = if (house.isPurchase) 
-                            "Satış Bedeli: $${String.format("%.2f", house.price)} (Kira Yok!)"
-                            else "Giriş/Depozito: $${String.format("%.2f", house.price)} | Kira: $${house.rent}/Ay",
-                        color = Color.LightGray,
-                        fontSize = 11.sp
-                    )
-                    Text(text = "Aylık Fatura Gideri: $${house.bills}", color = Color(0xFFFF5252), fontSize = 10.sp)
-                }
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = house.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (house.isPurchase) 
+                                    (if (lang == "TR") "Satış Bedeli: $${String.format("%.0f", house.price)} (Kira Yok!)" else "Purchase Price: $${String.format("%.0f", house.price)} (No Rent!)")
+                                    else (if (lang == "TR") "Giriş/Depozito: $${String.format("%.0f", house.price)} | Kira: $${house.rent}/Ay" else "Deposit: $${String.format("%.0f", house.price)} | Rent: $${house.rent}/Mo"),
+                                color = Color.LightGray,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = if (lang == "TR") "Aylık Gider: $${house.bills}" else "Monthly Bills: $${house.bills}",
+                                color = Color(0xFFFF5252), fontSize = 10.sp
+                            )
+                        }
 
-                if (isActive) {
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0x3BFFC107), CircleShape)
-                            .border(1.dp, Color(0xFFFFC107), CircleShape)
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(text = if (lang == "TR") "Aktif Evim" else "My Home", color = Color(0xFFFFC107), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        if (isActive) {
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0x3BFFC107), CircleShape)
+                                    .border(1.dp, Color(0xFFFFC107), CircleShape)
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(text = if (lang == "TR") "Aktif Evim" else "My Home", color = Color(0xFFFFC107), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Button(
+                                onClick = { onRentOrBuyHouse(house.id, house.price, house.isPurchase) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
+                                shape = RoundedCornerShape(6.dp),
+                                enabled = cash >= house.price,
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text(
+                                    text = if (house.isPurchase) 
+                                        (if (lang == "TR") "SATIN AL" else "BUY") 
+                                        else (if (lang == "TR") "KİRALA" else "RENT"),
+                                    color = Color.Black,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
-                } else {
-                    Button(
-                        onClick = { onRentOrBuyHouse(house.id, house.price, house.isPurchase) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
-                        shape = RoundedCornerShape(6.dp),
-                        enabled = cash >= house.price,
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Text(
-                            text = if (house.isPurchase) 
-                                (if (lang == "TR") "SATIN AL" else "BUY") 
-                                else (if (lang == "TR") "KİRALA" else "RENT"),
-                            color = Color.Black,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+
+                    // Listing interface for owned purchased houses
+                    if (isActive && house.isPurchase) {
+                        Divider(color = Color(0xFF1E283C), thickness = 0.5.dp)
+                        if (isListed) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (lang == "TR") "İlan Fiyatı: $${"%.0f".format(listedPrice)}" else "Listed Price: $${"%.0f".format(listedPrice)}",
+                                    color = Color(0xFFFFC107), fontSize = 12.sp, fontWeight = FontWeight.Bold
+                                )
+                                Button(
+                                    onClick = { onCancelListing(house.id) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6D1A1A)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text(text = if (lang == "TR") "İlanı Kaldır" else "Remove Listing", color = Color.White, fontSize = 10.sp)
+                                }
+                            }
+                        } else {
+                            if (listingTargetId == house.id) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = askingPriceInput,
+                                        onValueChange = { askingPriceInput = it.filter { c -> c.isDigit() || c == '.' } },
+                                        label = { Text(if (lang == "TR") "Satış Fiyatı ($)" else "Asking Price ($)", fontSize = 10.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f).height(48.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFFFFC107),
+                                            unfocusedBorderColor = Color(0xFF333C50),
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White
+                                        )
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val price = askingPriceInput.toDoubleOrNull() ?: 0.0
+                                            if (price > 0) {
+                                                onListForSale(house.id, price)
+                                                listingTargetId = null
+                                                askingPriceInput = ""
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.height(36.dp)
+                                    ) {
+                                        Text(if (lang == "TR") "İlanla" else "List", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    }
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        listingTargetId = house.id
+                                        askingPriceInput = "%.0f".format(house.price * 1.1)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3050)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.fillMaxWidth().height(28.dp)
+                                ) {
+                                    Text(
+                                        text = if (lang == "TR") "Evi Satışa Çıkar 🏷️" else "List House for Sale 🏷️",
+                                        color = Color.White, fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -727,14 +838,24 @@ fun IsometricRoomCanvas(houseId: String, furnitureList: List<String>, modifier: 
 fun GarageTab(
     ownedCars: String,
     activeCarId: String?,
+    listedProperties: String,
     cash: Double,
     lang: String,
     onBuyCar: (String, String, Double) -> Unit,
     onSelectActiveCar: (String) -> Unit,
     onStartDrive: () -> Unit,
-    onSellCar: (String, String, Double) -> Unit = { _, _, _ -> }
+    onListForSale: (String, Double) -> Unit,
+    onCancelListing: (String) -> Unit
 ) {
     val carsList = ownedCars.split(",").filter { it.isNotEmpty() }
+    val listedMap = listedProperties.split(",").filter { it.isNotEmpty() }
+        .associate { entry ->
+            val parts = entry.split(":")
+            (parts.getOrNull(0) ?: "") to (parts.getOrNull(1)?.toDoubleOrNull() ?: 0.0)
+        }
+
+    var askingPriceInput by remember { mutableStateOf("") }
+    var listingTargetId by remember { mutableStateOf<String?>(null) }
 
     val garageCatalog = listOf(
         CarOption("rust_bucket", if (lang == "TR") "🚗 Paslı Tofaş Şase (Murat 124)" else "🚗 Rust Murat 124", 800.0, "Paslı, eski"),
@@ -801,53 +922,139 @@ fun GarageTab(
         items(garageCatalog) { car ->
             val isOwned = carsList.contains(car.id)
             val isActive = activeCarId == car.id
+            val isListed = listedMap.containsKey(car.id)
+            val listedPrice = listedMap[car.id] ?: 0.0
 
-            Row(
+            Card(
+                colors = CardDefaults.cardColors(containerColor = if (isListed) Color(0xFF1B2A18) else Color(0xFF0F1422)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF0F1422), RoundedCornerShape(10.dp))
                     .border(
                         width = if (isActive) 1.5.dp else 1.dp,
-                        color = if (isActive) Color(0xFFFFC107) else Color(0xFF1E283C),
+                        color = if (isActive) Color(0xFFFFC107) else if (isListed) Color(0xFF2E4324) else Color(0xFF1E283C),
                         shape = RoundedCornerShape(10.dp)
                     )
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = car.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text(text = car.desc, color = Color.Gray, fontSize = 11.sp)
-                    Text(text = "Bedel: $${String.format("%.2f", car.price)}", color = Color(0xFF00E676), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = car.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text(text = car.desc, color = Color.Gray, fontSize = 11.sp)
+                            Text(text = "Bedel: $${String.format("%.0f", car.price)}", color = Color(0xFF00E676), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
 
-                if (isActive) {
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0x3BFFC107), CircleShape)
-                            .border(1.dp, Color(0xFFFFC107), CircleShape)
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(text = if (lang == "TR") "Direksiyonda" else "Active", color = Color(0xFFFFC107), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (isActive) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color(0x3BFFC107), CircleShape)
+                                        .border(1.dp, Color(0xFFFFC107), CircleShape)
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(text = if (lang == "TR") "Direksiyonda" else "Active", color = Color(0xFFFFC107), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else if (isOwned) {
+                                Button(
+                                    onClick = { onSelectActiveCar(car.id) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283C)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Text(text = if (lang == "TR") "SÜR" else "DRIVE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Button(
+                                    onClick = { onBuyCar(car.id, car.name, car.price) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    enabled = cash >= car.price,
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text(text = if (lang == "TR") "AL" else "BUY", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
-                } else if (isOwned) {
-                    Button(
-                        onClick = { onSelectActiveCar(car.id) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283C)),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.height(30.dp)
-                    ) {
-                        Text(text = if (lang == "TR") "SÜR" else "DRIVE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    Button(
-                        onClick = { onBuyCar(car.id, car.name, car.price) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
-                        shape = RoundedCornerShape(6.dp),
-                        enabled = cash >= car.price,
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Text(text = if (lang == "TR") "AL" else "BUY", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+
+                    // Car Sale listing row
+                    if (isOwned) {
+                        Divider(color = Color(0xFF1E283C), thickness = 0.5.dp)
+                        if (isListed) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (lang == "TR") "İlan Fiyatı: $${"%.0f".format(listedPrice)}" else "Listed Price: $${"%.0f".format(listedPrice)}",
+                                    color = Color(0xFFFFC107), fontSize = 12.sp, fontWeight = FontWeight.Bold
+                                )
+                                Button(
+                                    onClick = { onCancelListing(car.id) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6D1A1A)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text(text = if (lang == "TR") "İlanı Kaldır" else "Remove Listing", color = Color.White, fontSize = 10.sp)
+                                }
+                            }
+                        } else {
+                            if (listingTargetId == car.id) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = askingPriceInput,
+                                        onValueChange = { askingPriceInput = it.filter { c -> c.isDigit() || c == '.' } },
+                                        label = { Text(if (lang == "TR") "Satış Fiyatı ($)" else "Asking Price ($)", fontSize = 10.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f).height(48.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFFFFC107),
+                                            unfocusedBorderColor = Color(0xFF333C50),
+                                            focusedTextColor = Color.White,
+                                            unfocusedTextColor = Color.White
+                                        )
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val price = askingPriceInput.toDoubleOrNull() ?: 0.0
+                                            if (price > 0) {
+                                                onListForSale(car.id, price)
+                                                listingTargetId = null
+                                                askingPriceInput = ""
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFC107)),
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.height(36.dp)
+                                    ) {
+                                        Text(if (lang == "TR") "İlanla" else "List", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    }
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        listingTargetId = car.id
+                                        askingPriceInput = "%.0f".format(car.price * 1.1)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A3050)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.fillMaxWidth().height(28.dp)
+                                ) {
+                                    Text(
+                                        text = if (lang == "TR") "Satılık İlanı Ver 🏷️" else "List for Sale 🏷️",
+                                        color = Color.White, fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1626,11 +1833,14 @@ fun DrivingSimulator(
 fun PropertiesTab(
     ownedProperties: String,
     listedProperties: String,
+    offers: List<GameOffer>,
     cash: Double,
     lang: String,
     onBuyProperty: (String, String, Double) -> Unit,
     onListForSale: (String, Double) -> Unit,
-    onCancelListing: (String) -> Unit
+    onCancelListing: (String) -> Unit,
+    onAcceptOffer: (String) -> Unit,
+    onRejectOffer: (String) -> Unit
 ) {
     val ownedList = ownedProperties.split(",").filter { it.isNotEmpty() }
     val listedMap = listedProperties.split(",").filter { it.isNotEmpty() }
@@ -1676,10 +1886,102 @@ fun PropertiesTab(
                     )
                     Text(
                         text = if (lang == "TR")
-                            "Mülk satın alın, envantere ekleyin. Satışa çıkardığınızda YZ alıcılar piyasa değerinin %115'ine kadar olan fiyatı kabul eder."
-                            else "Buy properties and add them to inventory. List for sale — AI buyers accept prices up to 115% of market value.",
+                            "Mülk, ev veya araba satın alın. İlana koyduğunuzda gerçekçi YZ alıcılar teklifler verir. Kârlı teklifleri seçip nakite çevirin!"
+                            else "Buy properties, houses, or cars. When you list them, realistic AI buyers will make offers. Choose profitable deals and cash in!",
                         fontSize = 11.sp, color = Color.LightGray
                     )
+                }
+            }
+        }
+
+        // ─────────── INTERACTIVE INCOMING OFFERS SECTION ───────────
+        if (offers.isNotEmpty()) {
+            item {
+                Text(
+                    text = if (lang == "TR") "🔔 Gelen Teklifler (${offers.size})" else "🔔 Incoming Offers (${offers.size})",
+                    color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                )
+            }
+
+            items(offers) { offer ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF111724)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.2.dp, Color(0xFFFFC107), RoundedCornerShape(10.dp))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (lang == "TR") offer.itemNameTR else offer.itemNameEN,
+                                    color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (lang == "TR") "Alıcı: ${offer.buyerName}" else "Buyer: ${offer.buyerName}",
+                                    color = Color.Gray, fontSize = 10.sp
+                                )
+                            }
+
+                            // Calculate and format premium over market price
+                            val diffPercent = ((offer.offerPrice - offer.marketPrice) / offer.marketPrice) * 100
+                            val diffColor = if (diffPercent >= 0) Color(0xFF00E676) else Color(0xFFFF5252)
+                            val diffSign = if (diffPercent >= 0) "+" else ""
+                            Text(
+                                text = "$diffSign${String.format("%.1f", diffPercent)}%",
+                                color = diffColor, fontSize = 12.sp, fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = if (lang == "TR") "Değer: $${String.format("%.0f", offer.marketPrice)}" else "Market: $${String.format("%.0f", offer.marketPrice)}",
+                                    color = Color.Gray, fontSize = 11.sp
+                                )
+                                Text(
+                                    text = if (lang == "TR") "Teklif: $${String.format("%.0f", offer.offerPrice)}" else "Offer: $${String.format("%.0f", offer.offerPrice)}",
+                                    color = Color(0xFF00E676), fontSize = 14.sp, fontWeight = FontWeight.Black
+                                )
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Button(
+                                    onClick = { onRejectOffer(offer.id) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A1E25)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Text(
+                                        text = if (lang == "TR") "Reddet" else "Reject",
+                                        color = Color(0xFFFF5252), fontSize = 11.sp, fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Button(
+                                    onClick = { onAcceptOffer(offer.id) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Text(
+                                        text = if (lang == "TR") "Kabul Et" else "Accept",
+                                        color = Color(0xFF00E676), fontSize = 11.sp, fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -3,6 +3,9 @@ package com.example.data
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import kotlin.random.Random
@@ -547,6 +550,25 @@ class GameRepository(private val db: AppDatabase) {
         } else {
             updateSettings(settings.copy(gameDayCount = day))
         }
+
+        // --- EVERY-TURN GAME OVER CHECK (BELOW -$3000) ---
+        val finalPlayer = traderDao.getTraderById("player")
+        if (finalPlayer != null && finalPlayer.cash < -3000.0) {
+            traderDao.updateTrader(finalPlayer.copy(cash = 100.0))
+            val currentSettings = getOrInitSettings()
+            updateSettings(currentSettings.copy(
+                currentHouseId = "kiralik_kotu",
+                furnitureBought = "",
+                foodPlanId = 1
+            ))
+            newsDao.insertNews(NewsLog(
+                timestamp = System.currentTimeMillis(),
+                traderName = "SİSTEM / İCRA",
+                message = "🚨 İFLAS! Toplam borcunuz -$3000 sınırını aştı! Tüm varlıklarınıza el konuldu. $100 nakit ile en kötü gecekonduya taşındınız.",
+                symbol = "GENEL",
+                isSystemNews = true
+            ))
+        }
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -786,6 +808,84 @@ class GameRepository(private val db: AppDatabase) {
         }
     }
 
+    private val _offersState = MutableStateFlow<List<GameOffer>>(emptyList())
+    val offersState: StateFlow<List<GameOffer>> = _offersState.asStateFlow()
+
+    fun getItemMarketValue(itemId: String): Double {
+        return when (itemId) {
+            // Properties
+            "studio", "prop_studio" -> 15000.0
+            "apartment", "prop_apartment" -> 45000.0
+            "penthouse", "prop_penthouse" -> 250000.0
+            "office", "prop_office" -> 80000.0
+            "warehouse", "prop_warehouse" -> 60000.0
+            "shop", "prop_shop" -> 35000.0
+            "resort", "prop_resort" -> 500000.0
+
+            // Cars
+            "rust_bucket" -> 800.0
+            "tofas_sahin" -> 2500.0
+            "bmw_m3" -> 25000.0
+            "tesla_model_s" -> 75000.0
+            "ferrari" -> 250000.0
+
+            // Houses
+            "satinal_rezidans" -> 15000.0
+            "satinal_villa" -> 100000.0
+            else -> 10000.0
+        }
+    }
+
+    fun getItemNameTR(itemId: String): String {
+        return when (itemId) {
+            "studio", "prop_studio" -> "Stüdyo Daire"
+            "apartment", "prop_apartment" -> "Normal Daire"
+            "penthouse", "prop_penthouse" -> "Çatı Katı"
+            "office", "prop_office" -> "Ofis Katı"
+            "warehouse", "prop_warehouse" -> "Depo/Fabrika"
+            "shop", "prop_shop" -> "Dükkan/Mağaza"
+            "resort", "prop_resort" -> "Tatil Köyü"
+            "rust_bucket" -> "Paslı Tofaş (Murat 124)"
+            "tofas_sahin" -> "Modifiyeli Tofaş Şahin"
+            "bmw_m3" -> "BMW M3"
+            "tesla_model_s" -> "Tesla Model S"
+            "ferrari" -> "Kırmızı Ferrari F40"
+            "satinal_rezidans" -> "Lüks Rezidans"
+            "satinal_villa" -> "Ultra Malikane"
+            else -> itemId
+        }
+    }
+
+    fun getItemNameEN(itemId: String): String {
+        return when (itemId) {
+            "studio", "prop_studio" -> "Studio Apt"
+            "apartment", "prop_apartment" -> "Apartment"
+            "penthouse", "prop_penthouse" -> "Penthouse"
+            "office", "prop_office" -> "Office Floor"
+            "warehouse", "prop_warehouse" -> "Warehouse"
+            "shop", "prop_shop" -> "Shop"
+            "resort", "prop_resort" -> "Resort"
+            "rust_bucket" -> "Rust Murat 124"
+            "tofas_sahin" -> "Tuned Tofas Sahin"
+            "bmw_m3" -> "BMW M3"
+            "tesla_model_s" -> "Tesla Model S"
+            "ferrari" -> "Red Ferrari F40"
+            "satinal_rezidans" -> "Luxury Condo"
+            "satinal_villa" -> "Ultra Villa"
+            else -> itemId
+        }
+    }
+
+    fun getItemType(itemId: String): String {
+        return when (itemId) {
+            "studio", "apartment", "penthouse", "office", "warehouse", "shop", "resort",
+            "prop_studio", "prop_apartment", "prop_penthouse", "prop_office", "prop_warehouse", "prop_shop", "prop_resort" -> "PROPERTY"
+            "rust_bucket", "tofas_sahin", "bmw_m3", "tesla_model_s", "ferrari" -> "CAR"
+            "satinal_rezidans", "satinal_villa" -> "HOUSE"
+            else -> "PROPERTY"
+        }
+    }
+
     suspend fun listPropertyForSale(propId: String, askingPrice: Double) = withContext(Dispatchers.IO) {
         val settings = getOrInitSettings()
         val listed = settings.listedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
@@ -800,58 +900,134 @@ class GameRepository(private val db: AppDatabase) {
         val listed = settings.listedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
         listed.removeAll { it.startsWith("$propId:") }
         updateSettings(settings.copy(listedProperties = listed.joinToString(",")))
+        _offersState.value = _offersState.value.filter { it.itemId != propId }
     }
 
     /** Called periodically - simulates buyers making offers at fair prices */
     suspend fun checkPropertySales() = withContext(Dispatchers.IO) {
         val settings = getOrInitSettings()
         if (settings.listedProperties.isEmpty()) return@withContext
-        val listed = settings.listedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
-        val owned = settings.ownedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
+        val listed = settings.listedProperties.split(",").filter { it.isNotEmpty() }
+        if (listed.isEmpty()) return@withContext
+
+        // 35% chance to generate an offer on a random listed item each tick
+        if (Random.nextDouble() >= 0.35) return@withContext
+
+        val listedEntry = listed.random()
+        val parts = listedEntry.split(":")
+        if (parts.isEmpty()) return@withContext
+        val itemId = parts[0]
+        val askingPrice = parts.getOrNull(1)?.toLongOrNull()?.toDouble() ?: return@withContext
+
+        // Check if there is already an offer for this item
+        val currentOffers = _offersState.value
+        if (currentOffers.any { it.itemId == itemId }) return@withContext
+
+        // Generate offer price between 85% and 120% of market value
+        val marketPrice = getItemMarketValue(itemId)
+        val offerPercent = Random.nextDouble(0.85, 1.20)
+        val offerPrice = Math.round(marketPrice * offerPercent).toDouble()
+
+        val buyerNames = listOf(
+            "Milyarder Kerem", "Yatırımcı Cengiz", "Koleksiyoner Can", "Emlakçı Selim",
+            "Trader Arda", "Yazılımcı Mert", "Memur Ahmet", "Galeri Sahibi Burak",
+            "Crypto Whale 🐳", "Doktor Elif", "Avukat Serkan", "Fon Yöneticisi Derin"
+        )
+        val buyer = buyerNames.random()
+
+        val newOffer = GameOffer(
+            id = java.util.UUID.randomUUID().toString(),
+            itemId = itemId,
+            itemType = getItemType(itemId),
+            itemNameTR = getItemNameTR(itemId),
+            itemNameEN = getItemNameEN(itemId),
+            buyerName = buyer,
+            offerPrice = offerPrice,
+            marketPrice = marketPrice
+        )
+
+        _offersState.value = currentOffers + newOffer
+
+        newsDao.insertNews(NewsLog(
+            timestamp = System.currentTimeMillis(),
+            traderName = "SİSTEM / TEKLİF",
+            message = "🏷️ Gelen Teklif: '${newOffer.itemNameTR}' için $buyer tarafından $${String.format("%.0f", offerPrice)} teklif verildi! (İlan fiyatı: $${String.format("%.0f", askingPrice)})",
+            symbol = "GENEL",
+            isSystemNews = true
+        ))
+    }
+
+    suspend fun acceptOffer(offerId: String) = withContext(Dispatchers.IO) {
+        val offer = _offersState.value.find { it.id == offerId } ?: return@withContext
         val player = traderDao.getTraderById("player") ?: return@withContext
+        val settings = getOrInitSettings()
 
-        val soldItems = mutableListOf<String>()
-        var cashGained = 0.0
+        // 1. Remove item from owned list
+        val ownedCarsList = settings.ownedCars.split(",").filter { it.isNotEmpty() }.toMutableList()
+        val ownedPropsList = settings.ownedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
+        var houseId = settings.currentHouseId
+        var activeCarId = settings.activeCarId
 
-        listed.forEach { entry ->
-            val parts = entry.split(":")
-            if (parts.size != 2) return@forEach
-            val propId = parts[0]
-            val askingPrice = parts[1].toLongOrNull()?.toDouble() ?: return@forEach
-
-            // Find property market value
-            val marketValue = getPropertyMarketValue(propId)
-            // Buyer won't pay more than 15% over market value
-            val maxBuyerPrice = marketValue * 1.15
-            if (askingPrice <= maxBuyerPrice && Random.nextDouble() < 0.25) {
-                // Sale happens!
-                soldItems.add(entry)
-                owned.remove(propId)
-                cashGained += askingPrice
-                newsDao.insertNews(NewsLog(
-                    timestamp = System.currentTimeMillis(), traderName = "SİSTEM / GAYRİMENKUL",
-                    message = "🏢✅ Mülk satışı gerçekleşti! '$propId' mülkünüz $${String.format("%.2f", askingPrice)}'a satıldı.",
-                    symbol = "GENEL", isSystemNews = true
-                ))
+        when (offer.itemType) {
+            "CAR" -> {
+                ownedCarsList.remove(offer.itemId)
+                if (activeCarId == offer.itemId) {
+                    activeCarId = ownedCarsList.lastOrNull()
+                }
+            }
+            "PROPERTY" -> {
+                ownedPropsList.remove(offer.itemId)
+                // support prop_ prefixed IDs if any
+                ownedPropsList.remove("prop_${offer.itemId}")
+                ownedPropsList.remove(offer.itemId.removePrefix("prop_"))
+            }
+            "HOUSE" -> {
+                if (houseId == offer.itemId) {
+                    houseId = "kiralik_kotu" // default slums
+                }
             }
         }
 
-        if (soldItems.isNotEmpty()) {
-            listed.removeAll(soldItems.toSet())
-            traderDao.updateTrader(player.copy(cash = player.cash + cashGained))
-            updateSettings(settings.copy(ownedProperties = owned.joinToString(","), listedProperties = listed.joinToString(",")))
-        }
+        // 2. Remove from listings
+        val listedList = settings.listedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
+        listedList.removeAll { it.startsWith("${offer.itemId}:") }
+
+        // 3. Award cash
+        val newCash = player.cash + offer.offerPrice
+
+        // 4. Update Database
+        traderDao.updateTrader(player.copy(cash = newCash))
+        updateSettings(settings.copy(
+            ownedCars = ownedCarsList.joinToString(","),
+            ownedProperties = ownedPropsList.joinToString(","),
+            currentHouseId = houseId,
+            activeCarId = activeCarId,
+            listedProperties = listedList.joinToString(",")
+        ))
+
+        // 5. Clean up offers for this item
+        _offersState.value = _offersState.value.filter { it.itemId != offer.itemId }
+
+        newsDao.insertNews(NewsLog(
+            timestamp = System.currentTimeMillis(),
+            traderName = "SİSTEM / SATIŞ",
+            message = "🏢✅ Satış gerçekleşti! '${offer.itemNameTR}' mülkünüz $${String.format("%.0f", offer.offerPrice)} karşılığında ${offer.buyerName} kişisine satıldı.",
+            symbol = "GENEL",
+            isSystemNews = false
+        ))
     }
 
-    private fun getPropertyMarketValue(propId: String): Double = when (propId) {
-        "prop_studio" -> 15000.0
-        "prop_apartment" -> 35000.0
-        "prop_penthouse" -> 80000.0
-        "prop_office" -> 50000.0
-        "prop_warehouse" -> 25000.0
-        "prop_shop" -> 20000.0
-        "prop_resort" -> 200000.0
-        else -> 10000.0
+    suspend fun rejectOffer(offerId: String) = withContext(Dispatchers.IO) {
+        val offer = _offersState.value.find { it.id == offerId } ?: return@withContext
+        _offersState.value = _offersState.value.filter { it.id != offerId }
+
+        newsDao.insertNews(NewsLog(
+            timestamp = System.currentTimeMillis(),
+            traderName = "SİSTEM / TEKLİF",
+            message = "❌ '${offer.itemNameTR}' için ${offer.buyerName} tarafından yapılan $${String.format("%.0f", offer.offerPrice)} tutarındaki teklifi reddettiniz.",
+            symbol = "GENEL",
+            isSystemNews = false
+        ))
     }
 
     // ────────────────────────────────────────────────────────────────────────
