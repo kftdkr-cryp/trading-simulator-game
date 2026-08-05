@@ -1,0 +1,91 @@
+name: Deploy to Itch.io
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant Execute Permission to Gradle Wrapper
+        run: chmod +x gradlew || true
+
+      - name: Decode Debug Keystore
+        run: base64 -d debug.keystore.base64 > debug.keystore
+
+      - name: Build APK
+        run: ./gradlew assembleDebug
+
+      - name: Install Butler (itch.io CLI)
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip -d butler
+          chmod +x butler/butler
+          ./butler/butler --version
+
+      - name: Deploy to Itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY || 'NXkpDnm389gXxlO7DbmN05JD0nBRuNJMU1yey4bz' }}
+        run: |
+          echo "=== ITCH.IO DEPLOYMENT SCRIPT ==="
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          TARGET="Protrader698/margin-calltrading-simulator:android"
+          
+          if [ ! -f "$APK_PATH" ]; then
+            echo "❌ HATA: APK dosyası bulunamadı! Yol: $APK_PATH"
+            exit 1
+          fi
+          
+          echo "🚀 Butler ile yükleme başlatılıyor: $APK_PATH -> $TARGET..."
+          
+          # Run butler push and capture both stdout and stderr
+          BUTLER_OUT=$(./butler/butler push "$APK_PATH" "$TARGET" 2>&1)
+          BUTLER_STATUS=$?
+          
+          echo "$BUTLER_OUT"
+          
+          if [ $BUTLER_STATUS -ne 0 ]; then
+            echo "======================================================================="
+            echo "❌ DEPLOYMENT FAILED / YÜKLEME BAŞARISIZ OLDU!"
+            echo "======================================================================="
+            
+            if echo "$BUTLER_OUT" | grep -q "invalid game"; then
+              echo "💡 ÖNEMLİ ÇÖZÜM REHBERİ (INVALID GAME HATASI):"
+              echo "Itch.io hesabınızda (Protrader698) 'trading-simulator-game' isimli bir oyun sayfası henüz oluşturulmamış!"
+              echo ""
+              echo "Lütfen şu adımları takip ederek oyunu Itch.io'da oluşturun:"
+              echo "1️⃣  https://itch.io sitesine gidin ve 'Protrader698' hesabınızla giriş yapın."
+              echo "2️⃣  https://itch.io/game/new adresine giderek yeni bir oyun oluşturun."
+              echo "3️⃣  Oyun başlığını (Title) dilediğiniz gibi yazın (örn: Margin Call)."
+              echo "4️⃣  'Project URL' (veya URL slug) kısmının tam olarak 'trading-simulator-game' olduğundan emin olun."
+              echo "    Böylece oyun linkiniz şu şekilde olacaktır: https://protrader698.itch.io/trading-simulator-game"
+              echo "5️⃣  Sayfanın en altındaki 'Save' (Kaydet) butonuna basarak kaydedin."
+              echo "6️⃣  Kaydettikten sonra, bu GitHub Action işini (veya yeni bir push göndererek) tekrar çalıştırın."
+              echo ""
+              echo "Bu adımlardan sonra yükleme %100 sorunsuz şekilde tamamlanacaktır!"
+            elif echo "$BUTLER_OUT" | grep -q "invalid target"; then
+              echo "💡 ÖNEMLİ ÇÖZÜM REHBERİ (INVALID TARGET / BAD USER HATASI):"
+              echo "Kullanıcı adı veya API anahtarı uyuşmuyor!"
+              echo "1️⃣  Itch.io kullanıcı adınızın gerçekten 'Protrader698' olduğundan emin olun."
+              echo "2️⃣  API anahtarınızın doğru girildiğinden emin olun."
+            else
+              echo "Bilinmeyen bir Butler hatası oluştu. Lütfen yukarıdaki hata mesajını inceleyin."
+            fi
+            echo "======================================================================="
+            exit 1
+          else
+            echo "✅ Tebrikler! Oyun başarıyla Itch.io'ya yüklendi!"
+          fi
