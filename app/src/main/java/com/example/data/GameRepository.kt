@@ -1,13 +1,10 @@
 package com.example.data
 
+import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import java.security.MessageDigest
 import kotlin.random.Random
 
 class GameRepository(private val db: AppDatabase) {
@@ -16,20 +13,26 @@ class GameRepository(private val db: AppDatabase) {
     private val traderDao = db.traderDao()
     private val newsDao = db.newsDao()
     private val settingsDao = db.settingsDao()
-    private val userAccountDao = db.userAccountDao()
+
+    private var warn1000Sent = false
+    private var warn2000Sent = false
 
     val tradersFlow: Flow<List<Trader>> = traderDao.getAllTradersFlow()
     val newsLogsFlow: Flow<List<NewsLog>> = newsDao.getNewsFlow()
     val settingsFlow: Flow<GameSettings?> = settingsDao.getSettingsFlow()
 
     fun getCandlesFlow(symbol: String): Flow<List<MarketCandle>> = marketDao.getCandlesFlow(symbol)
+    suspend fun getCandlesList(symbol: String): List<MarketCandle> = withContext(Dispatchers.IO) {
+        marketDao.getCandlesList(symbol)
+    }
     fun getPositionsForTraderFlow(traderId: String): Flow<List<TraderPosition>> = traderDao.getPositionsForTraderFlow(traderId)
 
+    // Constants for Assets
     val assets = listOf(
-        AssetInfo("MKTX", "Piyasa Endeksi", "Stabil, dengeli küresel borsa endeksi", 100.0, 0.00005, 0.035, false),
-        AssetInfo("SOLR", "Solar Enerji", "Yüksek volatilite, haber odaklı temiz enerji hissesi", 50.0, 0.0002, 0.085, true),
-        AssetInfo("NEOM", "Teknoloji Devi", "İstikrarlı büyüyen, premium teknoloji şirketi", 250.0, 0.00008, 0.028, true),
-        AssetInfo("VOID", "Meme Coin", "Aşırı spekülatif, çılgın fiyat hareketleri olan kripto para", 5.0, 0.0003, 0.20, false)
+        AssetInfo("MKTX", "Piyasa Endeksi", "Stabil, dengeli küresel borsa endeksi", 100.0, 0.0001, 0.04),
+        AssetInfo("SOLR", "Solar Enerji", "Yüksek volatilite, haber odaklı temiz enerji hissesi", 50.0, 0.0003, 0.09),
+        AssetInfo("NEOM", "Teknoloji Devi", "İstikrarlı büyüyen, premium teknoloji şirketi", 250.0, 0.0001, 0.03),
+        AssetInfo("VOID", "Meme Coin", "Aşırı spekülatif, çılgın fiyat hareketleri olan kripto para", 5.0, 0.0005, 0.22)
     )
 
     data class AssetInfo(
@@ -37,80 +40,11 @@ class GameRepository(private val db: AppDatabase) {
         val displayName: String,
         val description: String,
         val startPrice: Double,
-        val drift: Double,
-        val volatility: Double,
-        val isPredictable: Boolean = false
+        val drift: Double,       // Expected trend
+        val volatility: Double   // Standard deviation/variance factor
     )
 
-    // ────────────────────────────────────────────────────────────────────────
-    // AUTH - Local username/password (max 2 accounts per device)
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun hashPassword(password: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(password.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
-
-    suspend fun getAccountCount(): Int = withContext(Dispatchers.IO) {
-        userAccountDao.countAccounts()
-    }
-
-    /**
-     * Register new account. Returns null on success, error string on failure.
-     */
-    suspend fun registerAccount(username: String, password: String, displayName: String): String? = withContext(Dispatchers.IO) {
-        val trimmedUsername = username.trim()
-        if (trimmedUsername.length < 3) return@withContext "Kullanıcı adı en az 3 karakter olmalı"
-        if (password.length < 4) return@withContext "Şifre en az 4 karakter olmalı"
-        if (userAccountDao.countAccounts() >= 2) return@withContext "Bu cihazda en fazla 2 hesap açılabilir"
-        val existing = userAccountDao.getByUsername(trimmedUsername)
-        if (existing != null) return@withContext "Bu kullanıcı adı zaten alınmış"
-
-        try {
-            userAccountDao.insertAccount(
-                UserAccount(
-                    username = trimmedUsername,
-                    passwordHash = hashPassword(password),
-                    displayName = displayName.trim().ifEmpty { trimmedUsername }
-                )
-            )
-        } catch (e: Exception) {
-            return@withContext "Hesap oluşturulamadı: ${e.message}"
-        }
-        null // success
-    }
-
-    /**
-     * Login. Returns null on success, error string on failure.
-     */
-    suspend fun loginAccount(username: String, password: String): String? = withContext(Dispatchers.IO) {
-        val account = userAccountDao.getByUsername(username.trim())
-            ?: return@withContext "Kullanıcı adı bulunamadı"
-        if (account.passwordHash != hashPassword(password)) return@withContext "Şifre yanlış"
-
-        val settings = getOrInitSettings()
-        updateSettings(settings.copy(loggedInUsername = account.username))
-
-        // Ensure player trader exists
-        val player = traderDao.getTraderById("player")
-        if (player == null) {
-            initializeGameIfNeeded()
-        } else {
-            // Update player display name to match account
-            traderDao.updateTrader(player.copy(name = account.displayName))
-        }
-        null
-    }
-
-    suspend fun logout() = withContext(Dispatchers.IO) {
-        val settings = getOrInitSettings()
-        updateSettings(settings.copy(loggedInUsername = null))
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // SETTINGS
-    // ────────────────────────────────────────────────────────────────────────
-
+    // Retrieve active settings or build default
     suspend fun getOrInitSettings(): GameSettings = withContext(Dispatchers.IO) {
         var settings = settingsDao.getSettings()
         if (settings == null) {
@@ -134,27 +68,28 @@ class GameRepository(private val db: AppDatabase) {
         settingsDao.insertOrUpdateSettings(settings)
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // GAME INIT / RESET
-    // ────────────────────────────────────────────────────────────────────────
-
+    // Check and Initialize Game Data if empty
     suspend fun initializeGameIfNeeded() = withContext(Dispatchers.IO) {
         val existingTraders = traderDao.getAllTradersList()
         if (existingTraders.isEmpty()) {
             Log.d("GameRepository", "Database is empty. Initializing simulation...")
+            
+            // 1. Generate 200 AI Traders
             val generatedTraders = generate200Traders()
             traderDao.insertTraders(generatedTraders)
 
+            // 2. Generate Historical Market Data (50 candles each)
             val initialCandles = mutableListOf<MarketCandle>()
             assets.forEach { asset ->
                 var currentPrice = asset.startPrice
-                var timestamp = System.currentTimeMillis() - (50 * 60000)
+                var timestamp = System.currentTimeMillis() - (50 * 60000) // 50 minutes ago
                 for (i in 1..50) {
                     val changePercent = asset.drift + (Random.nextDouble(-1.0, 1.0) * asset.volatility)
                     val close = (currentPrice * (1.0 + changePercent)).coerceAtLeast(0.01)
                     val high = (maxOf(currentPrice, close) * (1.0 + Random.nextDouble(0.0, asset.volatility / 2))).coerceAtLeast(0.01)
                     val low = (minOf(currentPrice, close) * (1.0 - Random.nextDouble(0.0, asset.volatility / 2))).coerceAtLeast(0.01)
                     val volume = Random.nextDouble(500.0, 10000.0) * (asset.startPrice / currentPrice).coerceAtLeast(0.1)
+
                     initialCandles.add(
                         MarketCandle(
                             symbol = asset.symbol,
@@ -167,16 +102,20 @@ class GameRepository(private val db: AppDatabase) {
                         )
                     )
                     currentPrice = close
-                    timestamp += 60000
+                    timestamp += 60000 // +1 minute
                 }
             }
             marketDao.insertCandles(initialCandles)
 
+            // Ensure GameSettings is populated
+            getOrInitSettings()
+
+            // 3. Populate Initial System News
             newsDao.insertNews(
                 NewsLog(
                     timestamp = System.currentTimeMillis(),
-                    traderName = "SİSTEM",
-                    message = "Yeni bir oyuncu, borsaya $0 nakit ile katıldı. Bu oyuncunun bir gün sıralamada zirveye çıkacağı öngörülüyor...",
+                    traderName = "SİSTEM / SYSTEM",
+                    message = "Simülasyon başladı! 200 yapay zeka yatırımcı aktif şekilde piyasada işlem yapıyor. Sıfır sermaye ile başlayıp mini oyunlarla fon kazanın, spot veya kaldıraçlı borsa işlemlerinde zirveye oynayın!",
                     symbol = "GENEL",
                     isSystemNews = true
                 )
@@ -184,41 +123,84 @@ class GameRepository(private val db: AppDatabase) {
         }
     }
 
-    suspend fun resetSimulation() = withContext(Dispatchers.IO) {
-        traderDao.clearAllPositions()
-        traderDao.insertTraders(emptyList())
-        marketDao.clearAllCandles()
-        newsDao.clearAllNews()
+    private fun generate200Traders(): List<Trader> {
+        val archetypes = listOf("TREND_FOLLOWER", "CONTRARIAN", "SCALPER", "WHALE", "CHAOS", "HODLER", "PANIC_SELLER")
+        val traders = mutableListOf<Trader>()
 
-        val settings = getOrInitSettings()
-        updateSettings(
-            settings.copy(
-                introSeen = false,
-                outroSeen = false,
-                currentHouseId = "kiralik_kotu",
-                ownedCars = "",
-                activeCarId = null,
-                furnitureBought = "",
-                foodPlanId = 1,
-                gameDayCount = 1,
-                gameMonthCount = 1,
-                ownedProperties = "",
-                listedProperties = ""
+        // Add Player as the 201st trader (0 capital start!)
+        traders.add(
+            Trader(
+                id = "player",
+                name = "Siz (Kullanıcı)",
+                archetype = "USER_CHOICE",
+                cash = 0.0, // 0 capital start!
+                initialCapital = 0.0,
+                winRate = 0.0,
+                isPlayer = true,
+                rank = 201
             )
         )
 
-        initializeGameIfNeeded()
+        val firstNames = listOf(
+            "Can", "Efe", "Mert", "Arda", "Zeynep", "Elif", "Deniz", "Kaan", "Cem", "Selin", 
+            "Murat", "Banu", "Burak", "Hakan", "Yusuf", "Aylin", "Aslı", "Onur", "Volkan", "Tolga", 
+            "Buse", "Gökhan", "Ebru", "Oğuz", "Tarık", "Gizem", "Emre", "Fatih", "Kerem", "İrem"
+        )
+        val lastNames = listOf(
+            "Kaya", "Demir", "Çelik", "Şahin", "Yıldız", "Öztürk", "Arslan", "Yılmaz", "Aydın", "Koç", 
+            "Bulut", "Kılıç", "Özkan", "Aksoy", "Yalçın", "Polat", "Erdoğan", "Güler", "Yurt", "Şen"
+        )
+        val suffixes = listOf(
+            "HODLer", "Bull", "Bear", "Whale", "Scalper", "Moon", "Pro", "Macro", "Alpha", "Apex", 
+            "Max", "Chad", "Quant", "Algo", "Trader", "Guru", "Master", "Wizard", "Ninja", "Hedge"
+        )
+
+        val uniqueNames = mutableSetOf<String>()
+        var count = 1
+        while (count <= 200) {
+            val formatType = Random.nextInt(3)
+            val name = when (formatType) {
+                0 -> "${firstNames.random()} ${lastNames.random()}"
+                1 -> "${firstNames.random()}_${suffixes.random()}"
+                else -> "${suffixes.random()}_${lastNames.random()}"
+            }
+
+            if (!uniqueNames.contains(name)) {
+                uniqueNames.add(name)
+                val arch = if (count <= 5) "WHALE" else archetypes.random() // Whales are large market makers
+                val capital = when (arch) {
+                    "WHALE" -> Random.nextDouble(100000.0, 500000.0)
+                    "HODLER" -> Random.nextDouble(5000.0, 20000.0)
+                    "SCALPER" -> Random.nextDouble(4000.0, 15000.0)
+                    else -> Random.nextDouble(8000.0, 30000.0)
+                }
+                traders.add(
+                    Trader(
+                        id = "trader_$count",
+                        name = name,
+                        archetype = arch,
+                        cash = capital,
+                        initialCapital = capital,
+                        winRate = Random.nextDouble(40.0, 68.0),
+                        isPlayer = false,
+                        rank = count
+                    )
+                )
+                count++
+            }
+        }
+        return traders
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // TRADING
-    // ────────────────────────────────────────────────────────────────────────
-
+    // Earn cash through mini games / jobs
     suspend fun earnMiniGameCash(amount: Double, gameName: String) = withContext(Dispatchers.IO) {
         val player = traderDao.getTraderById("player") ?: return@withContext
         val newCash = player.cash + amount
+        // If initial capital was 0, let's keep track of initial capital as what they earned to make ROI realistic,
+        // or just keep it 0 and we handle ROI gracefully.
         val newInitial = if (player.initialCapital == 0.0) amount else player.initialCapital
         traderDao.updateTrader(player.copy(cash = newCash, initialCapital = newInitial))
+
         newsDao.insertNews(
             NewsLog(
                 timestamp = System.currentTimeMillis(),
@@ -230,213 +212,397 @@ class GameRepository(private val db: AppDatabase) {
         )
     }
 
+    // Google Profile Sync
+    suspend fun syncGoogleProfile(email: String, name: String, avatarUrl: String) = withContext(Dispatchers.IO) {
+        val currentSettings = getOrInitSettings()
+        updateSettings(
+            currentSettings.copy(
+                googleEmail = email,
+                googleName = name,
+                googleAvatarUrl = avatarUrl
+            )
+        )
+
+        // Sync Player trader profile name too!
+        val player = traderDao.getTraderById("player")
+        if (player != null) {
+            traderDao.updateTrader(player.copy(name = name))
+        }
+    }
+
+    // Advance turn (Generate new candles, run AI trade decisions, update ranks, check player liquidations)
     suspend fun advanceTurn() = withContext(Dispatchers.IO) {
         val traders = traderDao.getAllTradersList().toMutableList()
         val allPositionsList = traderDao.getAllPositions()
         val allPositions = allPositionsList.groupBy { it.traderId }
 
+        // 1. Advance prices for each asset with 60% Indicator, 70% Strategy probabilities
         val currentPrices = mutableMapOf<String, Double>()
         val previousCandlesMap = mutableMapOf<String, List<MarketCandle>>()
 
         assets.forEach { asset ->
             val candles = marketDao.getCandlesList(asset.symbol)
-            if (candles.isEmpty()) return@forEach
             previousCandlesMap[asset.symbol] = candles
-
+            if (candles.isEmpty()) return@forEach
             val lastCandle = candles.last()
-            val recentCandles = if (candles.size >= 5) candles.takeLast(5) else candles
-            val consecutiveGreen = recentCandles.takeLast(3).count { it.close > it.open }
-            val consecutiveRed = recentCandles.takeLast(3).count { it.close < it.open }
 
+            // A. Calculate Indicator Direction (+1 or -1)
             val sma10 = calculateSMA(candles, 10)
-            val sma20 = calculateSMA(candles, 20)
             val rsi10 = calculateRSI(candles, 10)
-
             var indDir = 0
             if (lastCandle.close > sma10) indDir += 1 else indDir -= 1
-            if (lastCandle.close > sma20) indDir += 1 else indDir -= 1
-            if (sma10 > sma20) indDir += 1 else indDir -= 1
-            if (rsi10 < 30.0) indDir += 2
-            if (rsi10 > 70.0) indDir -= 2
-            if (rsi10 < 40.0) indDir += 1
-            if (rsi10 > 60.0) indDir -= 1
-            if (consecutiveGreen >= 3) indDir -= 2
-            if (consecutiveRed >= 3) indDir += 2
-
+            if (rsi10 < 35.0) indDir += 1
+            if (rsi10 > 65.0) indDir -= 1
             val indicatorDirection = when {
-                indDir > 2 -> 1.0
-                indDir < -2 -> -1.0
-                indDir > 0 -> 0.5
-                indDir < 0 -> -0.5
+                indDir > 0 -> 1.0
+                indDir < 0 -> -1.0
                 else -> 0.0
             }
 
+            // B. Calculate Popular Strategy Direction (+1 or -1)
+            // Look at average positioning of AI Whales/Trend followers
             val totalSymbolPositions = allPositionsList.count { it.symbol == asset.symbol }
-            val strategyDirection = if (totalSymbolPositions > 25) 0.5 else -0.5
+            val strategyDirection = if (totalSymbolPositions > 25) 1.0 else -1.0
 
+            // C. Apply Probabilities:
+            // 60% probability the indicator determines direction
+            // 70% probability the strategy consensus determines direction
             var predictedMovement = 0.0
-            val indicatorProb = if (asset.isPredictable) 0.75 else 0.55
-            val strategyProb = if (asset.isPredictable) 0.50 else 0.40
-            if (Random.nextDouble() < indicatorProb) predictedMovement += indicatorDirection * asset.volatility * 0.6
-            if (Random.nextDouble() < strategyProb) predictedMovement += strategyDirection * asset.volatility * 0.5
-
-            val randomEventRoll = Random.nextDouble()
-            var shockFactor = 0.0
-            when {
-                randomEventRoll < 0.02 -> shockFactor = -asset.volatility * 3.0
-                randomEventRoll < 0.04 -> shockFactor = asset.volatility * 3.0
-                randomEventRoll < 0.08 -> shockFactor = -asset.volatility * 1.5
-                randomEventRoll < 0.12 -> shockFactor = asset.volatility * 1.5
+            if (Random.nextDouble() < 0.60) {
+                predictedMovement += indicatorDirection * asset.volatility * 0.7
+            }
+            if (Random.nextDouble() < 0.70) {
+                predictedMovement += strategyDirection * asset.volatility * 0.8
             }
 
-            val priceDistanceFromSMA = (lastCandle.close - sma10) / sma10
-            val meanReversion = -priceDistanceFromSMA * 0.1 * asset.volatility
+            // D. Trend Cycles and Volatility Shocks (Requirement 3)
+            // Cycle shifts every 15-20 candles per asset to vary trend lines
+            val candleCount = candles.size
+            val cycleIndex = candleCount / 18
+            val cycleSeed = (asset.symbol.hashCode() + cycleIndex).toLong()
+            val cycleRandom = java.util.Random(cycleSeed)
+            
+            // Cycle type: 0 = Strong Upward Bull, 1 = Strong Downward Bear, 2 = Sideways Normal
+            val cycleType = cycleRandom.nextInt(3)
+            val cycleDrift = when (cycleType) {
+                0 -> asset.volatility * 0.16 // Bull trend
+                1 -> -asset.volatility * 0.18 // Bear trend
+                else -> 0.0
+            }
 
-            val changePercent = asset.drift + predictedMovement + shockFactor + meanReversion
+            // Sudden giant shocks (flash crash or god pump) or normal volatility-based noise
+            val shockRand = Random.nextDouble()
+            val shockFactor = when {
+                shockRand < 0.04 -> -Random.nextDouble(0.12, 0.28) // FLASH CRASH!
+                shockRand > 0.96 -> Random.nextDouble(0.10, 0.24)  // GOD PUMP!
+                else -> Random.nextDouble(-0.5, 0.5) * asset.volatility // Standard motion
+            }
+
+            val changePercent = asset.drift + cycleDrift + predictedMovement + shockFactor
+
             val open = lastCandle.close
             val close = (open * (1.0 + changePercent)).coerceAtLeast(0.01)
-            val high = (maxOf(open, close) * (1.0 + Random.nextDouble(0.0, asset.volatility / 2))).coerceAtLeast(0.01)
-            val low = (minOf(open, close) * (1.0 - Random.nextDouble(0.0, asset.volatility / 2))).coerceAtLeast(0.01)
+            val high = (maxOf(open, close) * (1.0 + Random.nextDouble(0.0, asset.volatility / 3.2))).coerceAtLeast(0.01)
+            val low = (minOf(open, close) * (1.0 - Random.nextDouble(0.0, asset.volatility / 3.2))).coerceAtLeast(0.01)
+            val volume = Random.nextDouble(800.0, 12000.0) * (asset.startPrice / close).coerceAtLeast(0.1)
 
-            marketDao.insertCandles(listOf(
-                MarketCandle(
-                    symbol = asset.symbol,
-                    timestamp = System.currentTimeMillis(),
-                    open = open, high = high, low = low, close = close,
-                    volume = Random.nextDouble(1000.0, 20000.0)
-                )
-            ))
+            val newCandle = MarketCandle(
+                symbol = asset.symbol,
+                timestamp = lastCandle.timestamp + 60000,
+                open = open,
+                high = high,
+                low = low,
+                close = close,
+                volume = volume
+            )
+            marketDao.insertCandles(listOf(newCandle))
             currentPrices[asset.symbol] = close
         }
 
-        // Check player leverage liquidations / TP / SL
-        val playerPositions = allPositions["player"] ?: emptyList()
+        // 2. CHECK PLAYER LIQUIDATIONS & TP/SL ORDERS
+        val player = traderDao.getTraderById("player")
+        if (player != null) {
+            val playerPositions = traderDao.getPositionsForTraderList("player")
+            playerPositions.forEach { pos ->
+                val currentPrice = currentPrices[pos.symbol] ?: return@forEach
+                if (pos.isLeverage) {
+                    var isLiquidated = false
+                    if (pos.isLong && currentPrice <= pos.liquidationPrice) {
+                        isLiquidated = true
+                    } else if (!pos.isLong && currentPrice >= pos.liquidationPrice) {
+                        isLiquidated = true
+                    }
+
+                    if (isLiquidated) {
+                        // Liquidate! Delete position, do not return margin.
+                        traderDao.deletePosition(pos)
+                        
+                        // Publish breaking liquidation news
+                        newsDao.insertNews(
+                            NewsLog(
+                                timestamp = System.currentTimeMillis(),
+                                traderName = "KARA KUTU / LIQUIDATION",
+                                message = "🚨 LİKİDASYON ALARMI: Siz (Kullanıcı), $${String.format("%.2f", currentPrice)} fiyattan $${String.format("%.2f", pos.liquidationPrice)} Likidasyon sınırına çarparak $${String.format("%.2f", pos.margin)} değerindeki kaldıraçlı ${if (pos.isLong) "LONG" else "SHORT"} pozisyonunuzu kaybettiniz!",
+                                symbol = pos.symbol,
+                                isSystemNews = true
+                            )
+                        )
+                    } else {
+                        // Check Take Profit and Stop Loss triggers for leverage positions
+                        var isTpTriggered = false
+                        var isSlTriggered = false
+
+                        if (pos.takeProfitPrice > 0.0) {
+                            if (pos.isLong && currentPrice >= pos.takeProfitPrice) {
+                                isTpTriggered = true
+                            } else if (!pos.isLong && currentPrice <= pos.takeProfitPrice) {
+                                isTpTriggered = true
+                            }
+                        }
+
+                        if (pos.stopLossPrice > 0.0 && !isTpTriggered) {
+                            if (pos.isLong && currentPrice <= pos.stopLossPrice) {
+                                isSlTriggered = true
+                            } else if (!pos.isLong && currentPrice >= pos.stopLossPrice) {
+                                isSlTriggered = true
+                            }
+                        }
+
+                        if (isTpTriggered || isSlTriggered) {
+                            val priceDiff = if (pos.isLong) {
+                                currentPrice - pos.averageEntryPrice
+                            } else {
+                                pos.averageEntryPrice - currentPrice
+                            }
+                            val pnl = priceDiff * pos.quantity
+                            val returnedCash = (pos.margin + pnl).coerceAtLeast(0.0)
+                            
+                            val latestPlayer = traderDao.getTraderById("player")
+                            if (latestPlayer != null) {
+                                traderDao.updateTrader(latestPlayer.copy(cash = latestPlayer.cash + returnedCash))
+                            }
+                            traderDao.deletePosition(pos)
+
+                            val triggerLabel = if (isTpTriggered) "TAKE PROFIT (Kâr Al)" else "STOP LOSS (Zarar Durdur)"
+                            newsDao.insertNews(
+                                NewsLog(
+                                    timestamp = System.currentTimeMillis(),
+                                    traderName = "ALGORİTMİK EMİR / ORDER",
+                                    message = "⚡ $triggerLabel TETİKLENDİ: Kaldıraçlı ${if (pos.isLong) "LONG" else "SHORT"} pozisyonunuz $${String.format("%.2f", currentPrice)} fiyattan kapatıldı. Kâr/Zarar: $${String.format("%.2f", pnl)}, Cüzdana Eklenen Nakit: $${String.format("%.2f", returnedCash)}",
+                                    symbol = pos.symbol,
+                                    isSystemNews = true
+                                )
+                            )
+                        }
+                    }
+                } else {
+                    // Check Take Profit and Stop Loss triggers for Spot positions
+                    var isTpTriggered = false
+                    var isSlTriggered = false
+
+                    if (pos.takeProfitPrice > 0.0) {
+                        if (currentPrice >= pos.takeProfitPrice) {
+                            isTpTriggered = true
+                        }
+                    }
+
+                    if (pos.stopLossPrice > 0.0 && !isTpTriggered) {
+                        if (currentPrice <= pos.stopLossPrice) {
+                            isSlTriggered = true
+                        }
+                    }
+
+                    if (isTpTriggered || isSlTriggered) {
+                        val sellProceeds = pos.quantity * currentPrice
+                        val pnl = sellProceeds - (pos.quantity * pos.averageEntryPrice)
+                        
+                        val latestPlayer = traderDao.getTraderById("player")
+                        if (latestPlayer != null) {
+                            traderDao.updateTrader(latestPlayer.copy(cash = latestPlayer.cash + sellProceeds))
+                        }
+                        traderDao.deletePosition(pos)
+
+                        val triggerLabel = if (isTpTriggered) "TAKE PROFIT (Kâr Al)" else "STOP LOSS (Zarar Durdur)"
+                        newsDao.insertNews(
+                            NewsLog(
+                                timestamp = System.currentTimeMillis(),
+                                traderName = "ALGORİTMİK EMİR / ORDER",
+                                message = "⚡ $triggerLabel TETİKLENDİ: Spot ${pos.symbol} pozisyonunuzun tamamı (${String.format("%.4f", pos.quantity)} adet) $${String.format("%.2f", currentPrice)} fiyattan satıldı. Gelir: $${String.format("%.2f", sellProceeds)} (Kâr/Zarar: $${String.format("%.2f", pnl)})",
+                                symbol = pos.symbol,
+                                isSystemNews = true
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Check Debt Threshold Warnings
+            if (player.cash <= -1000.0 && !warn1000Sent) {
+                newsDao.insertNews(
+                    NewsLog(
+                        timestamp = System.currentTimeMillis(),
+                        traderName = "FİNANSAL DANIŞMAN / ADVISOR",
+                        message = "⚠️ UYARI: Net nakit bakiyeniz -1000$'ın altına düştü! Borçlarınızı kapatmak için acilen kârlı işlemler yapmalı veya mini işlerde çalışmalısınız.",
+                        symbol = "PORTFOLIO",
+                        isSystemNews = true
+                    )
+                )
+                warn1000Sent = true
+            } else if (player.cash > -1000.0) {
+                warn1000Sent = false
+            }
+
+            if (player.cash <= -2000.0 && !warn2000Sent) {
+                newsDao.insertNews(
+                    NewsLog(
+                        timestamp = System.currentTimeMillis(),
+                        traderName = "BANKA HUKUK DEPT / BANK",
+                        message = "🚨 KRİTİK UYARI: Nakit borcunuz -2000$'ı aştı! Açlık sınırındasınız. Bakiye -3000$'a ulaşırsa borçlarınız sizi aç ve hasta bırakacak, hayati risk oluşacaktır!",
+                        symbol = "PORTFOLIO",
+                        isSystemNews = true
+                    )
+                )
+                warn2000Sent = true
+            } else if (player.cash > -2000.0) {
+                warn2000Sent = false
+            }
+        }
+
+        // 3. Perform AI Traders Trade Decisions
+        val updatedTraders = mutableListOf<Trader>()
         val positionsToInsert = mutableListOf<TraderPosition>()
         val positionsToDelete = mutableListOf<TraderPosition>()
 
-        playerPositions.filter { it.isLeverage }.forEach { pos ->
-            val currentPrice = currentPrices[pos.symbol] ?: return@forEach
-            var closeReason: String? = null
-            var closeEmoji = "🔔"
-
-            // Check TP
-            if (pos.takeProfitPrice != null) {
-                if (pos.isLong && currentPrice >= pos.takeProfitPrice) { closeReason = "TP Hedefi Ulaşıldı"; closeEmoji = "🎯" }
-                else if (!pos.isLong && currentPrice <= pos.takeProfitPrice) { closeReason = "TP Hedefi Ulaşıldı"; closeEmoji = "🎯" }
-            }
-            // Check SL
-            if (closeReason == null && pos.stopLossPrice != null) {
-                if (pos.isLong && currentPrice <= pos.stopLossPrice) { closeReason = "Stop-Loss Tetiklendi"; closeEmoji = "🛡️" }
-                else if (!pos.isLong && currentPrice >= pos.stopLossPrice) { closeReason = "Stop-Loss Tetiklendi"; closeEmoji = "🛡️" }
-            }
-            // Check Liquidation
-            if (closeReason == null) {
-                if (pos.isLong && currentPrice <= pos.liquidationPrice) { closeReason = "LİKİDASYON"; closeEmoji = "💀" }
-                else if (!pos.isLong && currentPrice >= pos.liquidationPrice) { closeReason = "LİKİDASYON"; closeEmoji = "💀" }
+        traders.forEach { trader ->
+            if (trader.isPlayer) {
+                updatedTraders.add(trader)
+                return@forEach
             }
 
-            if (closeReason != null) {
-                val priceDiff = if (pos.isLong) currentPrice - pos.averageEntryPrice else pos.averageEntryPrice - currentPrice
-                val pnl = priceDiff * pos.quantity
-                val returnAmount = if (closeReason == "LİKİDASYON") 0.0 else (pos.margin + pnl).coerceAtLeast(0.0)
-                val player2 = traderDao.getTraderById("player")
-                if (player2 != null) {
-                    traderDao.updateTrader(player2.copy(cash = player2.cash + returnAmount))
-                }
-                positionsToDelete.add(pos)
-                newsDao.insertNews(NewsLog(
-                    timestamp = System.currentTimeMillis(),
-                    traderName = "Siz (Kullanıcı)",
-                    message = "$closeEmoji $closeReason: ${pos.symbol} pozisyonu $${String.format("%.2f", currentPrice)} fiyatından kapatıldı! PnL: $${String.format("%.2f", pnl)}",
-                    symbol = pos.symbol,
-                    isSystemNews = true
-                ))
-            }
-        }
-
-        // AI Trader decisions
-        val updatedTraders = traders.map { trader ->
-            if (trader.isPlayer) return@map trader
             var cash = trader.cash
-            val positions = (allPositions[trader.id] ?: emptyList()).toMutableList()
             val strategy = trader.archetype
+            val traderPosList = allPositions[trader.id] ?: emptyList()
 
-            assets.forEach { asset ->
-                val symbol = asset.symbol
-                val currentPrice = currentPrices[symbol] ?: asset.startPrice
-                val candles = previousCandlesMap[symbol] ?: return@forEach
-                val rsi10 = calculateRSI(candles, 10)
-                val sma10 = calculateSMA(candles, 10)
-                val position = positions.firstOrNull { it.symbol == symbol && !it.isLeverage }
+            val targetAsset = assets.random()
+            val symbol = targetAsset.symbol
+            val currentPrice = currentPrices[symbol] ?: targetAsset.startPrice
+            val candles = previousCandlesMap[symbol] ?: emptyList()
+            val position = traderPosList.firstOrNull { it.symbol == symbol }
 
-                val shouldBuy: Boolean
-                val shouldSell: Boolean
+            var action = "HOLD"
+            val sma10 = calculateSMA(candles, 10)
+            val rsi10 = calculateRSI(candles, 10)
 
-                when (strategy) {
-                    "TREND_FOLLOWER" -> {
-                        shouldBuy = currentPrice > sma10 && rsi10 < 70.0 && cash > 100
-                        shouldSell = position != null && (currentPrice < sma10 || rsi10 > 80.0)
-                    }
-                    "CONTRARIAN" -> {
-                        shouldBuy = rsi10 < 30.0 && cash > 100
-                        shouldSell = position != null && rsi10 > 70.0
-                    }
-                    "SCALPER" -> {
-                        shouldBuy = Random.nextDouble() < 0.3 && cash > 50
-                        shouldSell = position != null && Random.nextDouble() < 0.3
-                    }
-                    "WHALE" -> {
-                        shouldBuy = currentPrice < sma10 * 0.97 && cash > 500
-                        shouldSell = position != null && currentPrice > sma10 * 1.05
-                    }
-                    "PANIC_SELLER" -> {
-                        shouldBuy = rsi10 < 40.0 && Random.nextDouble() < 0.2 && cash > 100
-                        shouldSell = position != null && (currentPrice < position.averageEntryPrice * 0.97 || rsi10 > 65.0)
-                    }
-                    "HODLER" -> {
-                        shouldBuy = cash > 200 && Random.nextDouble() < 0.1
-                        shouldSell = false
-                    }
-                    else -> {
-                        shouldBuy = Random.nextDouble() < 0.15 && cash > 100
-                        shouldSell = position != null && Random.nextDouble() < 0.15
+            when (strategy) {
+                "TREND_FOLLOWER" -> {
+                    if (candles.isNotEmpty()) {
+                        val lastClose = candles.last().close
+                        if (lastClose > sma10 && position == null) {
+                            action = "BUY"
+                        } else if (lastClose < sma10 && position != null) {
+                            action = "SELL"
+                        }
                     }
                 }
-
-                if (shouldBuy && cash > 50) {
-                    val buyCash = cash * Random.nextDouble(0.05, 0.25)
-                    val qty = buyCash / currentPrice
-                    cash -= buyCash
-                    val existing = positions.firstOrNull { it.symbol == symbol && !it.isLeverage }
-                    if (existing != null) {
-                        val newQty = existing.quantity + qty
-                        val newAvg = ((existing.quantity * existing.averageEntryPrice) + buyCash) / newQty
-                        positions.removeAll { it.symbol == symbol && !it.isLeverage }
-                        positions.add(existing.copy(quantity = newQty, averageEntryPrice = newAvg))
-                        positionsToInsert.add(existing.copy(quantity = newQty, averageEntryPrice = newAvg))
-                    } else {
-                        val newPos = TraderPosition("${trader.id}_$symbol", trader.id, symbol, qty, currentPrice)
-                        positions.add(newPos)
-                        positionsToInsert.add(newPos)
+                "CONTRARIAN" -> {
+                    if (rsi10 < 30.0 && position == null) {
+                        action = "BUY"
+                    } else if (rsi10 > 70.0 && position != null) {
+                        action = "SELL"
                     }
-                    if (Random.nextDouble() < 0.15) generateTradeTweet(trader.name, strategy, symbol, "BUY", rsi10, currentPrice)
-                } else if (shouldSell && position != null) {
-                    val sellReturn = position.quantity * currentPrice
-                    cash += sellReturn
-                    positions.removeAll { it.symbol == symbol && !it.isLeverage }
-                    positionsToDelete.add(position)
-                    if (Random.nextDouble() < 0.15) generateTradeTweet(trader.name, strategy, symbol, "SELL", rsi10, currentPrice)
+                }
+                "SCALPER" -> {
+                    if (position == null) {
+                        if (Random.nextDouble() < 0.4) action = "BUY"
+                    } else {
+                        val profitPct = (currentPrice - position.averageEntryPrice) / position.averageEntryPrice
+                        if (profitPct > 0.015 || profitPct < -0.008) {
+                            action = "SELL"
+                        }
+                    }
+                }
+                "WHALE" -> {
+                    if (position == null) {
+                        if (Random.nextDouble() < 0.15) action = "BUY"
+                    } else {
+                        val profitPct = (currentPrice - position.averageEntryPrice) / position.averageEntryPrice
+                        if (profitPct > 0.40 || Random.nextDouble() < 0.02) {
+                            action = "SELL"
+                        }
+                    }
+                }
+                "PANIC_SELLER" -> {
+                    if (candles.size >= 2) {
+                        val lastCandle = candles.last()
+                        val drop = (lastCandle.close - lastCandle.open) / lastCandle.open
+                        if (drop < -0.025 && position != null) {
+                            action = "SELL"
+                        } else if (position == null && Random.nextDouble() < 0.15) {
+                            action = "BUY"
+                        }
+                    } else if (position == null && Random.nextDouble() < 0.1) {
+                        action = "BUY"
+                    }
+                }
+                "HODLER" -> {
+                    if (position == null) {
+                        if (Random.nextDouble() < 0.25) action = "BUY"
+                    } else {
+                        val profitPct = (currentPrice - position.averageEntryPrice) / position.averageEntryPrice
+                        if (profitPct > 0.80) {
+                            action = "SELL"
+                        }
+                    }
+                }
+                "CHAOS" -> {
+                    if (Random.nextDouble() < 0.1) {
+                        action = if (position == null) "BUY" else "SELL"
+                    }
                 }
             }
 
-            trader.copy(cash = cash)
+            if (action == "BUY" && cash > 100.0) {
+                val buyFraction = if (strategy == "WHALE") Random.nextDouble(0.5, 0.9) else Random.nextDouble(0.2, 0.6)
+                val buyCash = cash * buyFraction
+                val qty = buyCash / currentPrice
+                if (qty > 0.0) {
+                    cash -= buyCash
+                    val newPos = if (position != null) {
+                        val totalQty = position.quantity + qty
+                        val avgEntry = ((position.quantity * position.averageEntryPrice) + buyCash) / totalQty
+                        TraderPosition("${trader.id}_$symbol", trader.id, symbol, totalQty, avgEntry)
+                    } else {
+                        TraderPosition("${trader.id}_$symbol", trader.id, symbol, qty, currentPrice)
+                    }
+                    positionsToInsert.add(newPos)
+                    if (Random.nextDouble() < 0.03) {
+                        generateTradeTweet(trader.name, strategy, symbol, "BUY", rsi10, currentPrice)
+                    }
+                }
+            } else if (action == "SELL" && position != null) {
+                val sellReturn = position.quantity * currentPrice
+                cash += sellReturn
+                positionsToDelete.add(position)
+                if (Random.nextDouble() < 0.03) {
+                    generateTradeTweet(trader.name, strategy, symbol, "SELL", rsi10, currentPrice)
+                }
+            }
+
+            updatedTraders.add(trader.copy(cash = cash))
         }
 
-        if (positionsToInsert.isNotEmpty()) positionsToInsert.forEach { traderDao.insertPosition(it) }
-        if (positionsToDelete.isNotEmpty()) positionsToDelete.forEach { traderDao.deletePosition(it) }
+        // Apply bulk AI trades
+        if (positionsToInsert.isNotEmpty()) {
+            positionsToInsert.forEach { traderDao.insertPosition(it) }
+        }
+        if (positionsToDelete.isNotEmpty()) {
+            positionsToDelete.forEach { traderDao.deletePosition(it) }
+        }
 
+        // 4. Generate Social News Comments
         generateMarketCommentary(currentPrices, previousCandlesMap)
 
+        // 5. Recalculate ranks and update traders
         val allUpdatedPositions = traderDao.getAllPositions().groupBy { it.traderId }
         val rankedTraders = updatedTraders.map { trader ->
             val posList = allUpdatedPositions[trader.id] ?: emptyList()
@@ -445,12 +611,16 @@ class GameRepository(private val db: AppDatabase) {
         }.sortedByDescending { it.second }
 
         val finalTradersList = rankedTraders.mapIndexed { idx, pair ->
-            val finalWinRate = if (pair.first.isPlayer) pair.first.winRate
-            else {
+            val finalWinRate = if (pair.first.isPlayer) {
+                pair.first.winRate
+            } else {
                 val delta = if (pair.second > pair.first.initialCapital) 0.05 else -0.05
                 (pair.first.winRate + delta).coerceIn(30.0, 95.0)
             }
-            pair.first.copy(rank = idx + 1, winRate = finalWinRate)
+            pair.first.copy(
+                rank = idx + 1,
+                winRate = finalWinRate
+            )
         }
         traderDao.updateTraders(finalTradersList)
 
@@ -463,10 +633,11 @@ class GameRepository(private val db: AppDatabase) {
             day = 1
             month += 1
 
+            // Monthly billing calculation
             val rent = when (settings.currentHouseId) {
                 "kiralik_kotu" -> 150.0
                 "kiralik_orta" -> 500.0
-                else -> 0.0
+                else -> 0.0 // Owned condo or villa
             }
             val bills = when (settings.currentHouseId) {
                 "kiralik_kotu" -> 50.0
@@ -482,11 +653,9 @@ class GameRepository(private val db: AppDatabase) {
                 else -> 50.0
             }
 
-            // Sadece mining rig pasif gelir - başka pasif gelir yok
             val hasMiningRig = settings.furnitureBought.split(",").contains("mining_rig")
             val miningIncome = if (hasMiningRig) 150.0 else 0.0
 
-            // Property rental income - satılık değil, sadece kira geliri olmaz (mülkler değer için)
             val totalExpenses = rent + bills + food - miningIncome
 
             val p = traderDao.getTraderById("player")
@@ -496,214 +665,481 @@ class GameRepository(private val db: AppDatabase) {
                 var furniture = settings.furnitureBought
                 var foodId = settings.foodPlanId
 
-                // İflas uyarıları
-                val playerBeforeDeduction = p.cash
-                if (playerBeforeDeduction <= -1000.0 && playerBeforeDeduction > -2000.0) {
-                    newsDao.insertNews(NewsLog(
-                        timestamp = System.currentTimeMillis(),
-                        traderName = "⚠️ UYARI / İFLAS RİSKİ",
-                        message = "⚠️ DİKKAT! Bakiyeniz -$${String.format("%.0f", -playerBeforeDeduction)} seviyesine düştü! İflas eşiği olan -$3000'a yaklaşıyorsunuz. Varlık satın veya trading yaparak nakit kazanın!",
-                        symbol = "GENEL",
-                        isSystemNews = true
-                    ))
-                } else if (playerBeforeDeduction <= -2000.0 && playerBeforeDeduction > -3000.0) {
-                    newsDao.insertNews(NewsLog(
-                        timestamp = System.currentTimeMillis(),
-                        traderName = "🚨 KRİTİK UYARI",
-                        message = "🚨 ACİL! Bakiyeniz -$${String.format("%.0f", -playerBeforeDeduction)}! İFLASA ÇOK YAKIN! -$3000'a düşerseniz oyun biter. Hemen harekete geçin!",
-                        symbol = "GENEL",
-                        isSystemNews = true
-                    ))
-                }
-
-                if (newCash < -3000.0) {
+                if (newCash < -1000.0) {
+                    // Eviction!
                     newCash = 100.0
                     houseId = "kiralik_kotu"
                     furniture = ""
                     foodId = 1
-                    newsDao.insertNews(NewsLog(
-                        timestamp = System.currentTimeMillis(),
-                        traderName = "SİSTEM / İCRA",
-                        message = "🚨 İFLAS! Toplam borcunuz -$3000 sınırını aştı! Tüm varlıklarınıza el konuldu. $100 nakit ile en kötü gecekonduya taşındınız.",
-                        symbol = "GENEL",
-                        isSystemNews = true
-                    ))
+                    
+                    newsDao.insertNews(
+                        NewsLog(
+                            timestamp = System.currentTimeMillis(),
+                            traderName = "SİSTEM / İCRA",
+                            message = "🚨 EV BOŞALTMA VE HACİZ ALARMI: Toplam borcunuz $${String.format("%.2f", p.cash - totalExpenses)} seviyesine ulaştı ve faturalarınızı ödeyemediniz! Ev sahibi sizi dışarı attı, tüm mobilyalarınıza el konuldu ve $100 nakit ile en kötü gecekonduya taşınmak zorunda kaldınız!",
+                            symbol = "GENEL",
+                            isSystemNews = true
+                        )
+                    )
                 } else {
-                    newsDao.insertNews(NewsLog(
-                        timestamp = System.currentTimeMillis(),
-                        traderName = "SİSTEM / AY BAŞI",
-                        message = "📆 Yeni aya geçildi! Kira: $${String.format("%.2f", rent)}, Faturalar: $${String.format("%.2f", bills)}, Yemek: $${String.format("%.2f", food)}.${if (hasMiningRig) " Mining Rig pasif gelir: +$150.00" else ""} Hesabınızdan net $${String.format("%.2f", totalExpenses)} kesildi.",
-                        symbol = "GENEL",
-                        isSystemNews = true
-                    ))
+                    newsDao.insertNews(
+                        NewsLog(
+                            timestamp = System.currentTimeMillis(),
+                            traderName = "SİSTEM / AY BAŞI",
+                            message = "📆 Yeni aya geçildi! Kira: $${String.format("%.2f", rent)}, Faturalar: $${String.format("%.2f", bills)}, Yemek: $${String.format("%.2f", food)}.${if (hasMiningRig) " Mining Rig pasif gelir: +$150.00" else ""} Hesabınızdan net $${String.format("%.2f", totalExpenses)} kesildi.",
+                            symbol = "GENEL",
+                            isSystemNews = true
+                        )
+                    )
                 }
-
                 traderDao.updateTrader(p.copy(cash = newCash))
-                updateSettings(settings.copy(
-                    gameDayCount = day,
-                    gameMonthCount = month,
-                    currentHouseId = houseId,
-                    furnitureBought = furniture,
-                    foodPlanId = foodId
-                ))
+                updateSettings(
+                    settings.copy(
+                        gameDayCount = day,
+                        gameMonthCount = month,
+                        currentHouseId = houseId,
+                        furnitureBought = furniture,
+                        foodPlanId = foodId
+                    )
+                )
             }
         } else {
             updateSettings(settings.copy(gameDayCount = day))
         }
-
-        // --- EVERY-TURN GAME OVER CHECK (BELOW -$3000) ---
-        val finalPlayer = traderDao.getTraderById("player")
-        if (finalPlayer != null && finalPlayer.cash < -3000.0) {
-            traderDao.updateTrader(finalPlayer.copy(cash = 100.0))
-            val currentSettings = getOrInitSettings()
-            updateSettings(currentSettings.copy(
-                currentHouseId = "kiralik_kotu",
-                furnitureBought = "",
-                foodPlanId = 1
-            ))
-            newsDao.insertNews(NewsLog(
-                timestamp = System.currentTimeMillis(),
-                traderName = "SİSTEM / İCRA",
-                message = "🚨 İFLAS! Toplam borcunuz -$3000 sınırını aştı! Tüm varlıklarınıza el konuldu. $100 nakit ile en kötü gecekonduya taşındınız.",
-                symbol = "GENEL",
-                isSystemNews = true
-            ))
-        }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // MANUAL TRADING
-    // ────────────────────────────────────────────────────────────────────────
-
-    suspend fun executeUserTrade(symbol: String, isBuy: Boolean, quantity: Double) = withContext(Dispatchers.IO) {
+    // Manual Trade Execution for User (Spot Trading)
+    suspend fun executeUserTrade(
+        symbol: String,
+        isBuy: Boolean,
+        quantity: Double,
+        takeProfit: Double = 0.0,
+        stopLoss: Double = 0.0
+    ) = withContext(Dispatchers.IO) {
         val player = traderDao.getTraderById("player") ?: return@withContext
         val candles = marketDao.getCandlesList(symbol)
         if (candles.isEmpty()) return@withContext
         val currentPrice = candles.last().close
-        val totalCost = quantity * currentPrice
+
         val positionId = "player_${symbol}_spot"
         val position = traderDao.getPositionById(positionId)
 
         if (isBuy) {
-            if (player.cash >= totalCost && quantity > 0) {
+            // Easy buy auto-clamping: if total cost exceeds cash, clamp to maximum affordable quantity
+            var finalQty = quantity
+            var totalCost = finalQty * currentPrice
+            if (totalCost > player.cash) {
+                finalQty = (player.cash / currentPrice).coerceAtLeast(0.0)
+                totalCost = finalQty * currentPrice
+            }
+
+            if (finalQty > 0.0001) {
                 val newCash = player.cash - totalCost
                 val newPos = if (position != null) {
-                    val newQty = position.quantity + quantity
+                    val newQty = position.quantity + finalQty
                     val avgPrice = ((position.quantity * position.averageEntryPrice) + totalCost) / newQty
-                    TraderPosition(positionId, "player", symbol, newQty, avgPrice)
+                    TraderPosition(
+                        id = positionId,
+                        traderId = "player",
+                        symbol = symbol,
+                        quantity = newQty,
+                        averageEntryPrice = avgPrice,
+                        takeProfitPrice = takeProfit,
+                        stopLossPrice = stopLoss
+                    )
                 } else {
-                    TraderPosition(positionId, "player", symbol, quantity, currentPrice)
+                    TraderPosition(
+                        id = positionId,
+                        traderId = "player",
+                        symbol = symbol,
+                        quantity = finalQty,
+                        averageEntryPrice = currentPrice,
+                        takeProfitPrice = takeProfit,
+                        stopLossPrice = stopLoss
+                    )
                 }
                 traderDao.updateTrader(player.copy(cash = newCash))
                 traderDao.insertPosition(newPos)
-                newsDao.insertNews(NewsLog(
-                    timestamp = System.currentTimeMillis(),
-                    traderName = "Siz (Kullanıcı)",
-                    message = "$symbol varlığından Spot olarak $quantity adet aldınız. Birim Fiyat: $${String.format("%.2f", currentPrice)}",
-                    symbol = symbol, isSystemNews = false
-                ))
+
+                newsDao.insertNews(
+                    NewsLog(
+                        timestamp = System.currentTimeMillis(),
+                        traderName = "Siz (Kullanıcı)",
+                        message = "$symbol varlığından Spot olarak ${String.format("%.4f", finalQty)} adet aldınız. Birim Fiyat: $${String.format("%.2f", currentPrice)}",
+                        symbol = symbol,
+                        isSystemNews = false
+                    )
+                )
             }
         } else {
-            if (position != null && position.quantity >= quantity && quantity > 0) {
-                val sellProceeds = quantity * currentPrice
-                val newCash = player.cash + sellProceeds
-                val remainingQty = position.quantity - quantity
-                if (remainingQty <= 0.0001) traderDao.deletePosition(position)
-                else traderDao.insertPosition(position.copy(quantity = remainingQty))
-                val profit = sellProceeds - (quantity * position.averageEntryPrice)
-                val newWinRate = if (profit > 0) (player.winRate * 0.9 + 10.0).coerceIn(0.0, 100.0)
-                                 else (player.winRate * 0.9).coerceIn(0.0, 100.0)
-                traderDao.updateTrader(player.copy(cash = newCash, winRate = newWinRate))
-                newsDao.insertNews(NewsLog(
-                    timestamp = System.currentTimeMillis(),
-                    traderName = "Siz (Kullanıcı)",
-                    message = "$symbol Spot varlığınızdan $quantity adet sattınız. Gelir: $${String.format("%.2f", sellProceeds)} (Kâr/Zarar: $${String.format("%.2f", profit)})",
-                    symbol = symbol, isSystemNews = false
-                ))
+            if (position != null && position.quantity > 0.0) {
+                // Easy sell auto-clamping: if requested qty exceeds owned qty, clamp to owned qty
+                val finalQty = quantity.coerceAtMost(position.quantity)
+                if (finalQty > 0.0001) {
+                    val sellProceeds = finalQty * currentPrice
+                    val newCash = player.cash + sellProceeds
+                    val remainingQty = position.quantity - finalQty
+
+                    if (remainingQty <= 0.0001) {
+                        traderDao.deletePosition(position)
+                    } else {
+                        traderDao.insertPosition(
+                            position.copy(
+                                quantity = remainingQty,
+                                takeProfitPrice = takeProfit,
+                                stopLossPrice = stopLoss
+                            )
+                        )
+                    }
+
+                    // Update Player Win Rate based on profitability
+                    val profit = sellProceeds - (finalQty * position.averageEntryPrice)
+                    val newWinRate = if (profit > 0) {
+                        (player.winRate * 0.9 + 10.0).coerceIn(0.0, 100.0)
+                    } else {
+                        (player.winRate * 0.9).coerceIn(0.0, 100.0)
+                    }
+
+                    traderDao.updateTrader(player.copy(cash = newCash, winRate = newWinRate))
+
+                    newsDao.insertNews(
+                        NewsLog(
+                            timestamp = System.currentTimeMillis(),
+                            traderName = "Siz (Kullanıcı)",
+                            message = "$symbol Spot varlığınızdan ${String.format("%.4f", finalQty)} adet sattınız. Gelir: $${String.format("%.2f", sellProceeds)} (Kâr/Zarar: $${String.format("%.2f", profit)})",
+                            symbol = symbol,
+                            isSystemNews = false
+                        )
+                    )
+                }
             }
         }
     }
 
-    suspend fun executeUserLeverageTrade(symbol: String, isLong: Boolean, marginAmount: Double, leverage: Int,
-                                         takeProfitPercent: Double? = null, stopLossPercent: Double? = null) = withContext(Dispatchers.IO) {
+    // Manual Leverage Trade Execution for User (LONG / SHORT)
+    suspend fun executeUserLeverageTrade(
+        symbol: String,
+        isLong: Boolean,      // true = LONG, false = SHORT
+        marginAmount: Double, // The margin value committed (drawn from player's available cash)
+        leverage: Int,        // Leverage multiplier (e.g., 2, 5, 10, 50, 100)
+        takeProfit: Double = 0.0,
+        stopLoss: Double = 0.0
+    ) = withContext(Dispatchers.IO) {
         val player = traderDao.getTraderById("player") ?: return@withContext
         if (player.cash < marginAmount || marginAmount <= 0) return@withContext
+
         val candles = marketDao.getCandlesList(symbol)
         if (candles.isEmpty()) return@withContext
         val currentPrice = candles.last().close
+
+        // Quantity = (Margin * Leverage) / CurrentPrice
         val quantity = (marginAmount * leverage) / currentPrice
-        val liquidationPrice = if (isLong) currentPrice * (1.0 - (1.0 / leverage) + 0.03)
-                               else currentPrice * (1.0 + (1.0 / leverage) - 0.03)
-        val tpPrice = if (takeProfitPercent != null) {
-            if (isLong) currentPrice * (1.0 + takeProfitPercent / 100.0)
-            else currentPrice * (1.0 - takeProfitPercent / 100.0)
-        } else null
-        val slPrice = if (stopLossPercent != null) {
-            if (isLong) currentPrice * (1.0 - stopLossPercent / 100.0)
-            else currentPrice * (1.0 + stopLossPercent / 100.0)
-        } else null
+
+        // Liquidation Price formula incorporating maintenance margin fraction (~3% buffer)
+        val liquidationPrice = if (isLong) {
+            currentPrice * (1.0 - (1.0 / leverage) + 0.03)
+        } else {
+            currentPrice * (1.0 + (1.0 / leverage) - 0.03)
+        }
+
         val directionLabel = if (isLong) "long" else "short"
         val positionId = "player_${symbol}_leverage_$directionLabel"
+
         val newPosition = TraderPosition(
-            id = positionId, traderId = "player", symbol = symbol, quantity = quantity,
-            averageEntryPrice = currentPrice, isLeverage = true, leverage = leverage,
-            isLong = isLong, margin = marginAmount, liquidationPrice = liquidationPrice,
-            takeProfitPrice = tpPrice, stopLossPrice = slPrice
+            id = positionId,
+            traderId = "player",
+            symbol = symbol,
+            quantity = quantity,
+            averageEntryPrice = currentPrice,
+            isLeverage = true,
+            leverage = leverage,
+            isLong = isLong,
+            margin = marginAmount,
+            liquidationPrice = liquidationPrice,
+            takeProfitPrice = takeProfit,
+            stopLossPrice = stopLoss
         )
-        traderDao.updateTrader(player.copy(cash = player.cash - marginAmount))
+
+        val newCash = player.cash - marginAmount
+        traderDao.updateTrader(player.copy(cash = newCash))
         traderDao.insertPosition(newPosition)
-        var message = "$symbol $leverage Kaldıraçlı ${if (isLong) "LONG" else "SHORT"} pozisyonu açıldı! Teminat: $${String.format("%.2f", marginAmount)}"
-        if (tpPrice != null) message += ", TP: $${String.format("%.2f", tpPrice)}"
-        if (slPrice != null) message += ", SL: $${String.format("%.2f", slPrice)}"
-        newsDao.insertNews(NewsLog(timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)", message = message, symbol = symbol, isSystemNews = false))
+
+        newsDao.insertNews(
+            NewsLog(
+                timestamp = System.currentTimeMillis(),
+                traderName = "Siz (Kullanıcı)",
+                message = "$symbol $leverage Kaldıraçlı ${if (isLong) "LONG" else "SHORT"} pozisyonu açıldı! Teminat: $${String.format("%.2f", marginAmount)}, Likidasyon Fiyatı: $${String.format("%.2f", liquidationPrice)}",
+                symbol = symbol,
+                isSystemNews = false
+            )
+        )
     }
 
-    suspend fun updatePositionTpSl(positionId: String, tpPercent: Double?, slPercent: Double?) = withContext(Dispatchers.IO) {
-        val pos = traderDao.getPositionById(positionId) ?: return@withContext
-        val tpPrice = if (tpPercent != null) {
-            if (pos.isLong) pos.averageEntryPrice * (1.0 + tpPercent / 100.0)
-            else pos.averageEntryPrice * (1.0 - tpPercent / 100.0)
-        } else null
-        val slPrice = if (slPercent != null) {
-            if (pos.isLong) pos.averageEntryPrice * (1.0 - slPercent / 100.0)
-            else pos.averageEntryPrice * (1.0 + slPercent / 100.0)
-        } else null
-        traderDao.insertPosition(pos.copy(takeProfitPrice = tpPrice, stopLossPrice = slPrice))
-    }
-
+    // Close active leverage position manually
     suspend fun closeUserLeveragePosition(positionId: String) = withContext(Dispatchers.IO) {
-        val pos = traderDao.getPositionById(positionId) ?: return@withContext
-        val candles = marketDao.getCandlesList(pos.symbol)
-        val currentPrice = candles.lastOrNull()?.close ?: pos.averageEntryPrice
-        val priceDiff = if (pos.isLong) currentPrice - pos.averageEntryPrice else pos.averageEntryPrice - currentPrice
-        val pnl = priceDiff * pos.quantity
-        val returnAmount = (pos.margin + pnl).coerceAtLeast(0.0)
-        val player = traderDao.getTraderById("player")
-        if (player != null) traderDao.updateTrader(player.copy(cash = player.cash + returnAmount))
-        traderDao.deletePosition(pos)
-        newsDao.insertNews(NewsLog(
-            timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)",
-            message = "${pos.symbol} kaldıraçlı pozisyon manuel kapatıldı. PnL: $${String.format("%.2f", pnl)} | Geri Alınan: $${String.format("%.2f", returnAmount)}",
-            symbol = pos.symbol, isSystemNews = false
-        ))
+        val player = traderDao.getTraderById("player") ?: return@withContext
+        val position = traderDao.getPositionById(positionId) ?: return@withContext
+        val candles = marketDao.getCandlesList(position.symbol)
+        if (candles.isEmpty()) return@withContext
+        val currentPrice = candles.last().close
+
+        // Calculate leverage PnL
+        val priceDiff = if (position.isLong) {
+            currentPrice - position.averageEntryPrice
+        } else {
+            position.averageEntryPrice - currentPrice
+        }
+        val pnl = priceDiff * position.quantity
+
+        // Margin + PnL returned to player's cash (capped at 0 in case of deficit, though it would usually liquidate first)
+        val returnedCash = (position.margin + pnl).coerceAtLeast(0.0)
+
+        val newCash = player.cash + returnedCash
+        traderDao.deletePosition(position)
+
+        val isProfit = pnl > 0
+        val newWinRate = if (isProfit) {
+            (player.winRate * 0.9 + 10.0).coerceIn(0.0, 100.0)
+        } else {
+            (player.winRate * 0.9).coerceIn(0.0, 100.0)
+        }
+
+        traderDao.updateTrader(player.copy(cash = newCash, winRate = newWinRate))
+
+        newsDao.insertNews(
+            NewsLog(
+                timestamp = System.currentTimeMillis(),
+                traderName = "Siz (Kullanıcı)",
+                message = "$positionId kaldıraçlı pozisyonunu başarıyla kapattınız. Kâr/Zarar: $${String.format("%.2f", pnl)}, Çekilen Nakit: $${String.format("%.2f", returnedCash)}",
+                symbol = position.symbol,
+                isSystemNews = false
+            )
+        )
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // LIFE SIMULATION
-    // ────────────────────────────────────────────────────────────────────────
+    // Reset Game Simulation completely
+    suspend fun resetSimulation() = withContext(Dispatchers.IO) {
+        traderDao.clearAllPositions()
+        
+        // Remove existing traders
+        val allTraders = traderDao.getAllTradersList()
+        // Delete traders effectively by overwriting with empty and initializing again
+        traderDao.insertTraders(emptyList()) 
 
+        marketDao.clearAllCandles()
+        newsDao.clearAllNews()
+
+        // Reset life simulation settings
+        val settings = getOrInitSettings()
+        updateSettings(
+            settings.copy(
+                introSeen = false,
+                outroSeen = false,
+                currentHouseId = "kiralik_kotu",
+                ownedCars = "",
+                activeCarId = null,
+                furnitureBought = "",
+                foodPlanId = 1,
+                gameDayCount = 1,
+                gameMonthCount = 1
+            )
+        )
+        
+        // Initialize from scratch
+        initializeGameIfNeeded()
+    }
+
+    // Calculate sum of assets for trader
+    private fun getTraderPortfolioValue(traderId: String, positions: List<TraderPosition>, currentPrices: Map<String, Double>): Double {
+        var sum = 0.0
+        positions.forEach { pos ->
+            val price = currentPrices[pos.symbol] ?: 0.0
+            if (pos.isLeverage) {
+                // For leverage, equity = committed margin + unrealized PnL
+                val diff = if (pos.isLong) (price - pos.averageEntryPrice) else (pos.averageEntryPrice - price)
+                val unrealizedPnl = diff * pos.quantity
+                sum += (pos.margin + unrealizedPnl).coerceAtLeast(0.0)
+            } else {
+                sum += pos.quantity * price
+            }
+        }
+        return sum
+    }
+
+    // Technical Analysis Indicators Calculations
+    fun calculateSMA(candles: List<MarketCandle>, period: Int): Double {
+        if (candles.size < period) {
+            return if (candles.isEmpty()) 0.0 else candles.map { it.close }.average()
+        }
+        return candles.takeLast(period).map { it.close }.average()
+    }
+
+    fun calculateRSI(candles: List<MarketCandle>, period: Int): Double {
+        if (candles.size < period + 1) return 50.0
+        
+        val closes = candles.takeLast(period + 1).map { it.close }
+        var gains = 0.0
+        var losses = 0.0
+
+        for (i in 1 until closes.size) {
+            val change = closes[i] - closes[i - 1]
+            if (change > 0) {
+                gains += change
+            } else {
+                losses += -change
+            }
+        }
+
+        val avgGain = gains / period
+        val avgLoss = losses / period
+
+        if (avgLoss == 0.0) return 100.0
+        val rs = avgGain / avgLoss
+        return 100.0 - (100.0 / (1.0 + rs))
+    }
+
+    private suspend fun generateTradeTweet(traderName: String, strategy: String, symbol: String, type: String, rsi: Double, price: Double) {
+        val messages = when (type) {
+            "BUY" -> when (strategy) {
+                "TREND_FOLLOWER" -> listOf(
+                    "$symbol yükseliş trendinde! SMA kırıldı, pozisyon açıyorum. 📈🚀",
+                    "Trend dostumuzdur! $symbol grafik harika duruyor, ekleme yaptım."
+                )
+                "CONTRARIAN" -> listOf(
+                    "$symbol RSI değeri $rsi ile aşırı satımda! Buradan geri döner, topluyorum. 💸",
+                    "Herkes korkarken al, herkes coşarken sat! RSI dipte, $symbol uzun pozisyon aldım."
+                )
+                "SCALPER" -> listOf(
+                    "Kısa vadeli $symbol fırsatı yakalandı. Küçük kâr için daldım! ⚡",
+                    "Hızlı bir scalping turu. Al-sat ekibi iş başında!"
+                )
+                "WHALE" -> listOf(
+                    "$symbol tahtasındaki tüm satışları sildim. Buralar bizim! 🐳💎",
+                    "Cüzdanı doldurma vakti geldi. $symbol uzun vadeli portföye eklendi."
+                )
+                "PANIC_SELLER" -> listOf(
+                    "Herkes $symbol konuşuyor, kaçırmamak lazım (FOMO)! Aldık bakalım... 🫣",
+                    "Umarım bu sefer tepeden almamışımdır. $symbol aldım."
+                )
+                "HODLER" -> listOf(
+                    "Maliyet düşürme zamanı! $symbol miktarı artırıldı. Ömürlük tutuyorum! 💎🙌",
+                    "Yıl sonuna kadar $symbol satmıyorum. Cüzdan kilitli!"
+                )
+                else -> listOf(
+                    "Ufak bir miktar $symbol denemesi. Hadi bakalım! 🎲",
+                    "Portföyü çeşitlendirmek iyidir. $symbol sepete girdi."
+                )
+            }
+            else -> when (strategy) {
+                "TREND_FOLLOWER" -> listOf(
+                    "Destek kırıldı, yükseliş trendi bitti. $symbol elveda. 📉💔",
+                    "Trend yön değiştirdi, kârı alıp kenara çekilme zamanı."
+                )
+                "CONTRARIAN" -> listOf(
+                    "RSI değeri $rsi ile şişti (Aşırı Alım). $symbol short/satış pozisyonu. 🛑",
+                    "Buralar çok pahalılaştı, tepeden satışlarımı yaptım. Kâr cepte!"
+                )
+                "SCALPER" -> listOf(
+                    "Scalp hedefi tamamlandı. Kârı cebe attım, sıradaki işleme geçiyorum! 🎯💸",
+                    "Hızlı kâr realizasyonu. Beklemeye gerek yok."
+                )
+                "WHALE" -> listOf(
+                    "Biraz nakit kraldır. $symbol kâr realizasyonu tahtayı sallayabilir! 🐳💥",
+                    "Hafifleme vakti. Büyük satış blokları girildi."
+                )
+                "PANIC_SELLER" -> listOf(
+                    "Bu ne biçim düşüş! $symbol batıyoruz! Hepsini sattım kurtuldum! 😭📉",
+                    "Büyük bir dump geliyor, can havliyle kaçtım!"
+                )
+                "HODLER" -> listOf(
+                    "Mecburi satım. Yoksa hayatta vermezdim bu fiyata. 💔💎",
+                    "Uzun süredir tuttuğum $symbol portföyünden ufak bir kâr aldım."
+                )
+                else -> listOf(
+                    "Bu fiyattan $symbol satmak mantıklı geldi. Nakitte kalalım.",
+                    "İşlem tamamlandı, $symbol pozisyonu başarıyla kapatıldı."
+                )
+            }
+        }
+
+        newsDao.insertNews(
+            NewsLog(
+                timestamp = System.currentTimeMillis(),
+                traderName = traderName,
+                message = messages.random(),
+                symbol = symbol,
+                isSystemNews = false
+            )
+        )
+    }
+
+    private suspend fun generateMarketCommentary(currentPrices: Map<String, Double>, oldCandles: Map<String, List<MarketCandle>>) {
+        assets.forEach { asset ->
+            val symbol = asset.symbol
+            val price = currentPrices[symbol] ?: return@forEach
+            val candles = oldCandles[symbol] ?: return@forEach
+            if (candles.size < 2) return@forEach
+
+            val lastClose = candles.last().close
+            val change = (price - lastClose) / lastClose
+
+            if (Random.nextDouble() < 0.15) {
+                val text = when {
+                    change > 0.08 -> listOf(
+                        "FLAŞ HABER: $symbol fiyatında olağanüstü patlama! Balinalar devrede olabilir! 🚀📈",
+                        "ANALİZ: $symbol direnç noktasını parçaladı. Alıcılar çılgınca saldırıyor!"
+                    ).random()
+                    change < -0.08 -> listOf(
+                        "KORKU VE PANİK: $symbol cephesinde büyük çöküş! Sert satış baskısı sürüyor! 📉🩸",
+                        "ACİL DURUM: $symbol desteği kırıldı! Likidasyon dalgası tetikleniyor."
+                    ).random()
+                    change > 0.03 -> listOf(
+                        "$symbol son dakikalarda güzel toparladı, yükseliş kanalına girdi. 👍",
+                        "Piyasa uzmanları $symbol için olumlu raporlar yayınlıyor."
+                    ).random()
+                    change < -0.03 -> listOf(
+                        "$symbol üzerinde kâr satışları yoğunlaştı. Düzeltme süreci başladı mı? 🤔",
+                        "Ayılar $symbol tahtasında kontrolü ele almaya çalışıyor."
+                    ).random()
+                    else -> null
+                }
+
+                if (text != null) {
+                    newsDao.insertNews(
+                        NewsLog(
+                            timestamp = System.currentTimeMillis(),
+                            traderName = "SİSTEM / MEDIA",
+                            message = text,
+                            symbol = symbol,
+                            isSystemNews = true
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    // LIFE SIMULATION REPOSITORY HELPER FUNCTIONS
     suspend fun buyOrRentHouse(houseId: String, price: Double, isPurchase: Boolean) = withContext(Dispatchers.IO) {
         val player = traderDao.getTraderById("player") ?: return@withContext
         val settings = getOrInitSettings()
         if (player.cash >= price) {
-            traderDao.updateTrader(player.copy(cash = player.cash - price))
+            val newCash = player.cash - price
+            traderDao.updateTrader(player.copy(cash = newCash))
             updateSettings(settings.copy(currentHouseId = houseId))
-            newsDao.insertNews(NewsLog(
-                timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)",
-                message = if (isPurchase) "Yeni bir ev SATIN ALDINIZ! 🏠 Fiyat: $${String.format("%.2f", price)}"
-                          else "Yeni kiralık eve taşındınız! Fiyat: $${String.format("%.2f", price)}",
-                symbol = "GENEL", isSystemNews = false
-            ))
+            newsDao.insertNews(
+                NewsLog(
+                    timestamp = System.currentTimeMillis(),
+                    traderName = "Siz (Kullanıcı)",
+                    message = if (isPurchase) {
+                        "Yeni bir ev SATIN ALDINIZ! 🏠 Sınıf atladınız. Fiyat: $${String.format("%.2f", price)}"
+                    } else {
+                        "Yeni bir kiralık eve taşındınız! Fiyat: $${String.format("%.2f", price)} (Depozito/İlk Kira)"
+                    },
+                    symbol = "GENEL",
+                    isSystemNews = false
+                )
+            )
         }
     }
 
@@ -711,65 +1147,51 @@ class GameRepository(private val db: AppDatabase) {
         val player = traderDao.getTraderById("player") ?: return@withContext
         val settings = getOrInitSettings()
         val currentFurniture = settings.furnitureBought.split(",").filter { it.isNotEmpty() }.toMutableList()
-        if (currentFurniture.contains(furnitureId)) return@withContext
+        if (currentFurniture.contains(furnitureId)) return@withContext // Already bought
+        
         if (player.cash >= price) {
-            traderDao.updateTrader(player.copy(cash = player.cash - price))
+            val newCash = player.cash - price
+            traderDao.updateTrader(player.copy(cash = newCash))
             currentFurniture.add(furnitureId)
             updateSettings(settings.copy(furnitureBought = currentFurniture.joinToString(",")))
-            newsDao.insertNews(NewsLog(
-                timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)",
-                message = "Eviniz için '$name' satın aldınız! $${String.format("%.2f", price)} 🛋️",
-                symbol = "GENEL", isSystemNews = false
-            ))
+            newsDao.insertNews(
+                NewsLog(
+                    timestamp = System.currentTimeMillis(),
+                    traderName = "Siz (Kullanıcı)",
+                    message = "Eviniz için '$name' satın aldınız! Fiyat: $${String.format("%.2f", price)} 🛋️✨",
+                    symbol = "GENEL",
+                    isSystemNews = false
+                )
+            )
         }
-    }
-
-    suspend fun sellFurniture(furnitureId: String, name: String, salePrice: Double) = withContext(Dispatchers.IO) {
-        val player = traderDao.getTraderById("player") ?: return@withContext
-        val settings = getOrInitSettings()
-        val currentFurniture = settings.furnitureBought.split(",").filter { it.isNotEmpty() }.toMutableList()
-        if (!currentFurniture.contains(furnitureId)) return@withContext
-        currentFurniture.remove(furnitureId)
-        traderDao.updateTrader(player.copy(cash = player.cash + salePrice))
-        updateSettings(settings.copy(furnitureBought = currentFurniture.joinToString(",")))
-        newsDao.insertNews(NewsLog(
-            timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)",
-            message = "'$name' eşyasını $${String.format("%.2f", salePrice)} karşılığında sattınız 💰",
-            symbol = "GENEL", isSystemNews = false
-        ))
     }
 
     suspend fun buyCar(carId: String, name: String, price: Double) = withContext(Dispatchers.IO) {
         val player = traderDao.getTraderById("player") ?: return@withContext
         val settings = getOrInitSettings()
         val currentCars = settings.ownedCars.split(",").filter { it.isNotEmpty() }.toMutableList()
-        if (currentCars.contains(carId)) return@withContext
+        if (currentCars.contains(carId)) return@withContext // Already bought
+        
         if (player.cash >= price) {
-            traderDao.updateTrader(player.copy(cash = player.cash - price))
+            val newCash = player.cash - price
+            traderDao.updateTrader(player.copy(cash = newCash))
             currentCars.add(carId)
-            updateSettings(settings.copy(ownedCars = currentCars.joinToString(","), activeCarId = carId))
-            newsDao.insertNews(NewsLog(
-                timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)",
-                message = "Yeni ARABA satın aldınız! '$name'. Fiyat: $${String.format("%.2f", price)} 🚗💨",
-                symbol = "GENEL", isSystemNews = false
-            ))
+            updateSettings(
+                settings.copy(
+                    ownedCars = currentCars.joinToString(","),
+                    activeCarId = carId
+                )
+            )
+            newsDao.insertNews(
+                NewsLog(
+                    timestamp = System.currentTimeMillis(),
+                    traderName = "Siz (Kullanıcı)",
+                    message = "Görkemli bir yeni ARABA satın aldınız! '$name'. Fiyat: $${String.format("%.2f", price)} 🚗💨",
+                    symbol = "GENEL",
+                    isSystemNews = false
+                )
+            )
         }
-    }
-
-    suspend fun sellCar(carId: String, name: String, salePrice: Double) = withContext(Dispatchers.IO) {
-        val player = traderDao.getTraderById("player") ?: return@withContext
-        val settings = getOrInitSettings()
-        val currentCars = settings.ownedCars.split(",").filter { it.isNotEmpty() }.toMutableList()
-        if (!currentCars.contains(carId)) return@withContext
-        currentCars.remove(carId)
-        val newActiveCarId = if (settings.activeCarId == carId) currentCars.lastOrNull() else settings.activeCarId
-        traderDao.updateTrader(player.copy(cash = player.cash + salePrice))
-        updateSettings(settings.copy(ownedCars = currentCars.joinToString(","), activeCarId = newActiveCarId))
-        newsDao.insertNews(NewsLog(
-            timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)",
-            message = "'$name' aracınızı $${String.format("%.2f", salePrice)} karşılığında sattınız 💸",
-            symbol = "GENEL", isSystemNews = false
-        ))
     }
 
     suspend fun selectActiveCar(carId: String) = withContext(Dispatchers.IO) {
@@ -780,366 +1202,24 @@ class GameRepository(private val db: AppDatabase) {
     suspend fun changeFoodPlan(foodPlanId: Int, name: String) = withContext(Dispatchers.IO) {
         val settings = getOrInitSettings()
         updateSettings(settings.copy(foodPlanId = foodPlanId))
-        newsDao.insertNews(NewsLog(
-            timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)",
-            message = "Yemek planınız değiştirildi: '$name'. 🍽️",
-            symbol = "GENEL", isSystemNews = false
-        ))
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // PROPERTIES (Mülkler)
-    // ────────────────────────────────────────────────────────────────────────
-
-    suspend fun buyProperty(propId: String, name: String, price: Double) = withContext(Dispatchers.IO) {
-        val player = traderDao.getTraderById("player") ?: return@withContext
-        val settings = getOrInitSettings()
-        val owned = settings.ownedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
-        if (owned.contains(propId)) return@withContext
-        if (player.cash >= price) {
-            traderDao.updateTrader(player.copy(cash = player.cash - price))
-            owned.add(propId)
-            updateSettings(settings.copy(ownedProperties = owned.joinToString(",")))
-            newsDao.insertNews(NewsLog(
-                timestamp = System.currentTimeMillis(), traderName = "Siz (Kullanıcı)",
-                message = "🏢 Yeni mülk satın aldınız: '$name'. Değer: $${String.format("%.2f", price)}",
-                symbol = "GENEL", isSystemNews = false
-            ))
-        }
-    }
-
-    private val _offersState = MutableStateFlow<List<GameOffer>>(emptyList())
-    val offersState: StateFlow<List<GameOffer>> = _offersState.asStateFlow()
-
-    fun getItemMarketValue(itemId: String): Double {
-        return when (itemId) {
-            // Properties
-            "studio", "prop_studio" -> 15000.0
-            "apartment", "prop_apartment" -> 45000.0
-            "penthouse", "prop_penthouse" -> 250000.0
-            "office", "prop_office" -> 80000.0
-            "warehouse", "prop_warehouse" -> 60000.0
-            "shop", "prop_shop" -> 35000.0
-            "resort", "prop_resort" -> 500000.0
-
-            // Cars
-            "rust_bucket" -> 800.0
-            "tofas_sahin" -> 2500.0
-            "bmw_m3" -> 25000.0
-            "tesla_model_s" -> 75000.0
-            "ferrari" -> 250000.0
-
-            // Houses
-            "satinal_rezidans" -> 15000.0
-            "satinal_villa" -> 100000.0
-            else -> 10000.0
-        }
-    }
-
-    fun getItemNameTR(itemId: String): String {
-        return when (itemId) {
-            "studio", "prop_studio" -> "Stüdyo Daire"
-            "apartment", "prop_apartment" -> "Normal Daire"
-            "penthouse", "prop_penthouse" -> "Çatı Katı"
-            "office", "prop_office" -> "Ofis Katı"
-            "warehouse", "prop_warehouse" -> "Depo/Fabrika"
-            "shop", "prop_shop" -> "Dükkan/Mağaza"
-            "resort", "prop_resort" -> "Tatil Köyü"
-            "rust_bucket" -> "Paslı Tofaş (Murat 124)"
-            "tofas_sahin" -> "Modifiyeli Tofaş Şahin"
-            "bmw_m3" -> "BMW M3"
-            "tesla_model_s" -> "Tesla Model S"
-            "ferrari" -> "Kırmızı Ferrari F40"
-            "satinal_rezidans" -> "Lüks Rezidans"
-            "satinal_villa" -> "Ultra Malikane"
-            else -> itemId
-        }
-    }
-
-    fun getItemNameEN(itemId: String): String {
-        return when (itemId) {
-            "studio", "prop_studio" -> "Studio Apt"
-            "apartment", "prop_apartment" -> "Apartment"
-            "penthouse", "prop_penthouse" -> "Penthouse"
-            "office", "prop_office" -> "Office Floor"
-            "warehouse", "prop_warehouse" -> "Warehouse"
-            "shop", "prop_shop" -> "Shop"
-            "resort", "prop_resort" -> "Resort"
-            "rust_bucket" -> "Rust Murat 124"
-            "tofas_sahin" -> "Tuned Tofas Sahin"
-            "bmw_m3" -> "BMW M3"
-            "tesla_model_s" -> "Tesla Model S"
-            "ferrari" -> "Red Ferrari F40"
-            "satinal_rezidans" -> "Luxury Condo"
-            "satinal_villa" -> "Ultra Villa"
-            else -> itemId
-        }
-    }
-
-    fun getItemType(itemId: String): String {
-        return when (itemId) {
-            "studio", "apartment", "penthouse", "office", "warehouse", "shop", "resort",
-            "prop_studio", "prop_apartment", "prop_penthouse", "prop_office", "prop_warehouse", "prop_shop", "prop_resort" -> "PROPERTY"
-            "rust_bucket", "tofas_sahin", "bmw_m3", "tesla_model_s", "ferrari" -> "CAR"
-            "satinal_rezidans", "satinal_villa" -> "HOUSE"
-            else -> "PROPERTY"
-        }
-    }
-
-    suspend fun listPropertyForSale(propId: String, askingPrice: Double) = withContext(Dispatchers.IO) {
-        val settings = getOrInitSettings()
-        val listed = settings.listedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
-        // Remove any existing listing for this propId
-        listed.removeAll { it.startsWith("$propId:") }
-        listed.add("$propId:${askingPrice.toLong()}")
-        updateSettings(settings.copy(listedProperties = listed.joinToString(",")))
-    }
-
-    suspend fun cancelPropertyListing(propId: String) = withContext(Dispatchers.IO) {
-        val settings = getOrInitSettings()
-        val listed = settings.listedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
-        listed.removeAll { it.startsWith("$propId:") }
-        updateSettings(settings.copy(listedProperties = listed.joinToString(",")))
-        _offersState.value = _offersState.value.filter { it.itemId != propId }
-    }
-
-    /** Called periodically - simulates buyers making offers at fair prices */
-    suspend fun checkPropertySales() = withContext(Dispatchers.IO) {
-        val settings = getOrInitSettings()
-        if (settings.listedProperties.isEmpty()) return@withContext
-        val listed = settings.listedProperties.split(",").filter { it.isNotEmpty() }
-        if (listed.isEmpty()) return@withContext
-
-        // 35% chance to generate an offer on a random listed item each tick
-        if (Random.nextDouble() >= 0.35) return@withContext
-
-        val listedEntry = listed.random()
-        val parts = listedEntry.split(":")
-        if (parts.isEmpty()) return@withContext
-        val itemId = parts[0]
-        val askingPrice = parts.getOrNull(1)?.toLongOrNull()?.toDouble() ?: return@withContext
-
-        // Check if there is already an offer for this item
-        val currentOffers = _offersState.value
-        if (currentOffers.any { it.itemId == itemId }) return@withContext
-
-        // Generate offer price between 85% and 120% of market value
-        val marketPrice = getItemMarketValue(itemId)
-        val offerPercent = Random.nextDouble(0.85, 1.20)
-        val offerPrice = Math.round(marketPrice * offerPercent).toDouble()
-
-        val buyerNames = listOf(
-            "Milyarder Kerem", "Yatırımcı Cengiz", "Koleksiyoner Can", "Emlakçı Selim",
-            "Trader Arda", "Yazılımcı Mert", "Memur Ahmet", "Galeri Sahibi Burak",
-            "Crypto Whale 🐳", "Doktor Elif", "Avukat Serkan", "Fon Yöneticisi Derin"
+        newsDao.insertNews(
+            NewsLog(
+                timestamp = System.currentTimeMillis(),
+                traderName = "Siz (Kullanıcı)",
+                message = "Yemek planınızı değiştirdiniz: '$name'. 🍽️",
+                symbol = "GENEL",
+                isSystemNews = false
+            )
         )
-        val buyer = buyerNames.random()
-
-        val newOffer = GameOffer(
-            id = java.util.UUID.randomUUID().toString(),
-            itemId = itemId,
-            itemType = getItemType(itemId),
-            itemNameTR = getItemNameTR(itemId),
-            itemNameEN = getItemNameEN(itemId),
-            buyerName = buyer,
-            offerPrice = offerPrice,
-            marketPrice = marketPrice
-        )
-
-        _offersState.value = currentOffers + newOffer
-
-        newsDao.insertNews(NewsLog(
-            timestamp = System.currentTimeMillis(),
-            traderName = "SİSTEM / TEKLİF",
-            message = "🏷️ Gelen Teklif: '${newOffer.itemNameTR}' için $buyer tarafından $${String.format("%.0f", offerPrice)} teklif verildi! (İlan fiyatı: $${String.format("%.0f", askingPrice)})",
-            symbol = "GENEL",
-            isSystemNews = true
-        ))
     }
-
-    suspend fun acceptOffer(offerId: String) = withContext(Dispatchers.IO) {
-        val offer = _offersState.value.find { it.id == offerId } ?: return@withContext
-        val player = traderDao.getTraderById("player") ?: return@withContext
-        val settings = getOrInitSettings()
-
-        // 1. Remove item from owned list
-        val ownedCarsList = settings.ownedCars.split(",").filter { it.isNotEmpty() }.toMutableList()
-        val ownedPropsList = settings.ownedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
-        var houseId = settings.currentHouseId
-        var activeCarId = settings.activeCarId
-
-        when (offer.itemType) {
-            "CAR" -> {
-                ownedCarsList.remove(offer.itemId)
-                if (activeCarId == offer.itemId) {
-                    activeCarId = ownedCarsList.lastOrNull()
-                }
-            }
-            "PROPERTY" -> {
-                ownedPropsList.remove(offer.itemId)
-                // support prop_ prefixed IDs if any
-                ownedPropsList.remove("prop_${offer.itemId}")
-                ownedPropsList.remove(offer.itemId.removePrefix("prop_"))
-            }
-            "HOUSE" -> {
-                if (houseId == offer.itemId) {
-                    houseId = "kiralik_kotu" // default slums
-                }
-            }
-        }
-
-        // 2. Remove from listings
-        val listedList = settings.listedProperties.split(",").filter { it.isNotEmpty() }.toMutableList()
-        listedList.removeAll { it.startsWith("${offer.itemId}:") }
-
-        // 3. Award cash
-        val newCash = player.cash + offer.offerPrice
-
-        // 4. Update Database
-        traderDao.updateTrader(player.copy(cash = newCash))
-        updateSettings(settings.copy(
-            ownedCars = ownedCarsList.joinToString(","),
-            ownedProperties = ownedPropsList.joinToString(","),
-            currentHouseId = houseId,
-            activeCarId = activeCarId,
-            listedProperties = listedList.joinToString(",")
-        ))
-
-        // 5. Clean up offers for this item
-        _offersState.value = _offersState.value.filter { it.itemId != offer.itemId }
-
-        newsDao.insertNews(NewsLog(
-            timestamp = System.currentTimeMillis(),
-            traderName = "SİSTEM / SATIŞ",
-            message = "🏢✅ Satış gerçekleşti! '${offer.itemNameTR}' mülkünüz $${String.format("%.0f", offer.offerPrice)} karşılığında ${offer.buyerName} kişisine satıldı.",
-            symbol = "GENEL",
-            isSystemNews = false
-        ))
-    }
-
-    suspend fun rejectOffer(offerId: String) = withContext(Dispatchers.IO) {
-        val offer = _offersState.value.find { it.id == offerId } ?: return@withContext
-        _offersState.value = _offersState.value.filter { it.id != offerId }
-
-        newsDao.insertNews(NewsLog(
-            timestamp = System.currentTimeMillis(),
-            traderName = "SİSTEM / TEKLİF",
-            message = "❌ '${offer.itemNameTR}' için ${offer.buyerName} tarafından yapılan $${String.format("%.0f", offer.offerPrice)} tutarındaki teklifi reddettiniz.",
-            symbol = "GENEL",
-            isSystemNews = false
-        ))
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // STORY FLAGS
-    // ────────────────────────────────────────────────────────────────────────
 
     suspend fun setIntroSeen() = withContext(Dispatchers.IO) {
-        updateSettings(getOrInitSettings().copy(introSeen = true))
+        val settings = getOrInitSettings()
+        updateSettings(settings.copy(introSeen = true))
     }
 
     suspend fun setOutroSeen() = withContext(Dispatchers.IO) {
-        updateSettings(getOrInitSettings().copy(outroSeen = true))
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // HELPERS
-    // ────────────────────────────────────────────────────────────────────────
-
-    private fun getTraderPortfolioValue(traderId: String, positions: List<TraderPosition>, currentPrices: Map<String, Double>): Double {
-        var sum = 0.0
-        positions.forEach { pos ->
-            val price = currentPrices[pos.symbol] ?: 0.0
-            if (pos.isLeverage) {
-                val diff = if (pos.isLong) (price - pos.averageEntryPrice) else (pos.averageEntryPrice - price)
-                sum += pos.margin + (diff * pos.quantity)
-            } else {
-                sum += pos.quantity * price
-            }
-        }
-        return sum
-    }
-
-    fun calculateSMA(candles: List<MarketCandle>, period: Int): Double {
-        if (candles.size < period) return candles.lastOrNull()?.close ?: 0.0
-        return candles.takeLast(period).map { it.close }.average()
-    }
-
-    fun calculateRSI(candles: List<MarketCandle>, period: Int): Double {
-        if (candles.size < period + 1) return 50.0
-        val closes = candles.takeLast(period + 1).map { it.close }
-        var gains = 0.0; var losses = 0.0
-        for (i in 1 until closes.size) {
-            val change = closes[i] - closes[i - 1]
-            if (change > 0) gains += change else losses += -change
-        }
-        val avgGain = gains / period; val avgLoss = losses / period
-        if (avgLoss == 0.0) return 100.0
-        val rs = avgGain / avgLoss
-        return 100.0 - (100.0 / (1.0 + rs))
-    }
-
-    private suspend fun generateTradeTweet(traderName: String, strategy: String, symbol: String, type: String, rsi: Double, price: Double) {
-        val messages = when (type) {
-            "BUY" -> listOf(
-                "$symbol aldım! ${if (rsi < 40) "RSI dipte" else "Trend güçlü"}. 📈🚀",
-                "Pozisyon açıldı: $symbol @ $${String.format("%.2f", price)} 💎",
-                "$symbol fırsatı kaçmaz! Girdim. ⚡"
-            )
-            else -> listOf(
-                "$symbol sattım. Kâr cepte! 💸",
-                "Pozisyon kapatıldı: $symbol @ $${String.format("%.2f", price)} 📉",
-                "$symbol çıktım, bekliyorum. 🎯"
-            )
-        }
-        newsDao.insertNews(NewsLog(timestamp = System.currentTimeMillis(), traderName = traderName, message = messages.random(), symbol = symbol, isSystemNews = false))
-    }
-
-    private suspend fun generateMarketCommentary(currentPrices: Map<String, Double>, oldCandles: Map<String, List<MarketCandle>>) {
-        assets.forEach { asset ->
-            val oldPrice = oldCandles[asset.symbol]?.lastOrNull()?.close ?: return@forEach
-            val newPrice = currentPrices[asset.symbol] ?: return@forEach
-            val changePercent = ((newPrice - oldPrice) / oldPrice) * 100
-            if (Math.abs(changePercent) > 3.0) {
-                val direction = if (changePercent > 0) "⬆️ YUKARI" else "⬇️ AŞAĞI"
-                val msg = "${asset.displayName} (${ asset.symbol}) $direction! Değişim: ${String.format("%.2f", changePercent)}% @ $${String.format("%.2f", newPrice)}"
-                newsDao.insertNews(NewsLog(timestamp = System.currentTimeMillis(), traderName = "SİSTEM / BORSA", message = msg, symbol = asset.symbol, isSystemNews = true))
-            }
-        }
-    }
-
-    private fun generate200Traders(): List<Trader> {
-        val archetypes = listOf("TREND_FOLLOWER", "CONTRARIAN", "SCALPER", "WHALE", "CHAOS", "HODLER", "PANIC_SELLER")
-        val traders = mutableListOf<Trader>()
-        val firstNames = listOf("Ahmet", "Mert", "Emre", "Burak", "Arda", "Deniz", "Kemal", "Ali", "Can", "Taha",
-            "James", "Liam", "Noah", "Lucas", "Oliver", "Wang", "Liu", "Zhang", "Li", "Chen")
-        val lastNames = listOf("Yılmaz", "Kaya", "Demir", "Şahin", "Çelik", "Aydın", "Arslan", "Koç",
-            "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller")
-        val suffixes = listOf("Trader", "Pro", "Wolf", "Bull", "Bear", "King", "Guru", "98", "X", "Elite")
-        val uniqueNames = mutableSetOf<String>()
-        var count = 1
-
-        while (count <= 200) {
-            val formatType = Random.nextInt(3)
-            val name = when (formatType) {
-                0 -> "${firstNames.random()} ${lastNames.random()}"
-                1 -> "${lastNames.random()}${suffixes.random()}"
-                else -> "${firstNames.random()}${Random.nextInt(10, 9999)}"
-            }.also { uniqueNames.add(it) }
-
-            val arch = if (count <= 5) "WHALE" else archetypes.random()
-            val capital = when (arch) {
-                "WHALE" -> Random.nextDouble(50000.0, 200000.0)
-                "HODLER" -> Random.nextDouble(5000.0, 30000.0)
-                else -> Random.nextDouble(500.0, 15000.0)
-            }
-            traders.add(Trader(id = "ai_$count", name = name, archetype = arch, cash = capital, initialCapital = capital,
-                winRate = Random.nextDouble(35.0, 85.0), isPlayer = false, rank = count + 1))
-            count++
-        }
-
-        traders.add(Trader(id = "player", name = "Sen", archetype = "PLAYER", cash = 0.0,
-            initialCapital = 0.0, winRate = 50.0, isPlayer = true, rank = 201))
-        return traders
+        val settings = getOrInitSettings()
+        updateSettings(settings.copy(outroSeen = true))
     }
 }

@@ -21,7 +21,13 @@ import androidx.compose.ui.unit.sp
 import com.example.data.MarketCandle
 import kotlin.math.max
 
-data class LineDrawing(val startX: Float, val startY: Float, val endX: Float, val endY: Float)
+data class LineDrawing(
+    val startX: Float,
+    val startY: Float,
+    val endX: Float,
+    val endY: Float,
+    val type: String = "LINE"
+)
 
 @Composable
 fun CandleChart(
@@ -34,6 +40,7 @@ fun CandleChart(
     showRsi: Boolean,
     drawings: List<LineDrawing>,
     drawingModeEnabled: Boolean,
+    selectedDrawingTool: String, // "LINE", "HORIZONTAL", "RAY"
     onDrawLineAdded: (LineDrawing) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -51,8 +58,8 @@ fun CandleChart(
         return
     }
 
-    // Determine viewport size - show more candles for better analysis (50 candles)
-    val maxVisibleCandles = 50
+    // Determine viewport size (limit to last 35 candles to keep them wide and readable)
+    val maxVisibleCandles = 35
     val visibleCandles = if (candles.size > maxVisibleCandles) {
         candles.takeLast(maxVisibleCandles)
     } else {
@@ -108,7 +115,7 @@ fun CandleChart(
                 .weight(1f)
                 .fillMaxWidth()
                 .background(darkBg)
-                .pointerInput(drawingModeEnabled) {
+                .pointerInput(drawingModeEnabled, selectedDrawingTool) {
                     if (drawingModeEnabled) {
                         detectDragGestures(
                             onDragStart = { offset ->
@@ -123,10 +130,17 @@ fun CandleChart(
                                 val start = dragStartOffset
                                 val end = dragCurrentOffset
                                 if (start != null && end != null) {
+                                    val finalEnd = when (selectedDrawingTool) {
+                                        "HORIZONTAL" -> Offset(end.x, start.y)
+                                        else -> end
+                                    }
                                     onDrawLineAdded(
                                         LineDrawing(
-                                            start.x, start.y,
-                                            end.x, end.y
+                                            startX = start.x,
+                                            startY = start.y,
+                                            endX = finalEnd.x,
+                                            endY = finalEnd.y,
+                                            type = selectedDrawingTool
                                         )
                                     )
                                 }
@@ -272,28 +286,76 @@ fun CandleChart(
 
             // Render persistent user drawing lines!
             drawings.forEach { drawing ->
-                val isHorizontal = kotlin.math.abs(drawing.startY - drawing.endY) < 20f
-                drawLine(
-                    color = if (isHorizontal) Color.Cyan else Color.Yellow,
-                    start = Offset(drawing.startX, drawing.startY),
-                    end = Offset(drawing.endX, drawing.endY),
-                    strokeWidth = if (isHorizontal) 1.5f else 2.5f,
-                    pathEffect = if (isHorizontal) PathEffect.dashPathEffect(floatArrayOf(8f, 4f), 0f) else null
-                )
+                val drawY = drawing.startY
+                when (drawing.type) {
+                    "HORIZONTAL" -> {
+                        // Horizontal line across the entire usable width of the chart
+                        drawLine(
+                            color = Color.Yellow,
+                            start = Offset(0f, drawY),
+                            end = Offset(usableWidth, drawY),
+                            strokeWidth = 3f
+                        )
+                    }
+                    "RAY" -> {
+                        // Ray starts at startX and extends to the right edge
+                        drawLine(
+                            color = Color.Yellow,
+                            start = Offset(drawing.startX, drawY),
+                            end = Offset(usableWidth, drawing.endY),
+                            strokeWidth = 3f
+                        )
+                    }
+                    else -> {
+                        // Normal Line
+                        drawLine(
+                            color = Color.Yellow,
+                            start = Offset(drawing.startX, drawing.startY),
+                            end = Offset(drawing.endX, drawing.endY),
+                            strokeWidth = 3f
+                        )
+                    }
+                }
             }
 
             // Render current drawing line preview
             val currentStart = dragStartOffset
             val currentEnd = dragCurrentOffset
             if (currentStart != null && currentEnd != null) {
-                val isHorizontal = kotlin.math.abs(currentStart.y - currentEnd.y) < 20f
-                drawLine(
-                    color = Color.White,
-                    start = currentStart,
-                    end = currentEnd,
-                    strokeWidth = 2f,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
-                )
+                val previewEnd = when (selectedDrawingTool) {
+                    "HORIZONTAL" -> Offset(currentEnd.x, currentStart.y)
+                    else -> currentEnd
+                }
+                
+                when (selectedDrawingTool) {
+                    "HORIZONTAL" -> {
+                        drawLine(
+                            color = Color.White,
+                            start = Offset(0f, currentStart.y),
+                            end = Offset(usableWidth, currentStart.y),
+                            strokeWidth = 2f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                        )
+                    }
+                    "RAY" -> {
+                        drawLine(
+                            color = Color.White,
+                            start = Offset(currentStart.x, currentStart.y),
+                            end = Offset(usableWidth, previewEnd.y),
+                            strokeWidth = 2f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                        )
+                    }
+                    else -> {
+                        drawLine(
+                            color = Color.White,
+                            start = currentStart,
+                            end = previewEnd,
+                            strokeWidth = 2f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                        )
+                    }
+                }
             }
         }
 

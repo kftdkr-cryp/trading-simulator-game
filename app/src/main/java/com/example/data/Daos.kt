@@ -93,17 +93,3 @@ interface SettingsDao {
     suspend fun insertOrUpdateSettings(settings: GameSettings)
 }
 
-@Dao
-interface UserAccountDao {
-    @Query("SELECT * FROM user_accounts ORDER BY createdAt ASC")
-    suspend fun getAllAccounts(): List<UserAccount>
-
-    @Query("SELECT * FROM user_accounts WHERE username = :username LIMIT 1")
-    suspend fun getByUsername(username: String): UserAccount?
-
-    @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insertAccount(account: UserAccount)
-
-    @Query("SELECT COUNT(*) FROM user_accounts")
-    suspend fun countAccounts(): Int
-}

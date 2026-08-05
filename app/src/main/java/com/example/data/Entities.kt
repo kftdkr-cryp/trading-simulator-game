@@ -30,7 +30,7 @@ data class Trader(
 
 @Entity(tableName = "trader_positions")
 data class TraderPosition(
-    @PrimaryKey val id: String,
+    @PrimaryKey val id: String, // format: traderId_symbol_isLong
     val traderId: String,
     val symbol: String,
     val quantity: Double,
@@ -40,8 +40,8 @@ data class TraderPosition(
     val isLong: Boolean = true,
     val margin: Double = 0.0,
     val liquidationPrice: Double = 0.0,
-    val takeProfitPrice: Double? = null,
-    val stopLossPrice: Double? = null
+    val takeProfitPrice: Double = 0.0,
+    val stopLossPrice: Double = 0.0
 )
 
 @Entity(tableName = "news_logs")
@@ -54,35 +54,22 @@ data class NewsLog(
     val isSystemNews: Boolean
 )
 
-/** Local user account - stored per device, max 2 accounts */
-@Entity(tableName = "user_accounts")
-data class UserAccount(
-    @PrimaryKey val username: String,
-    val passwordHash: String,   // SHA-256 hex
-    val displayName: String,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
 @Entity(tableName = "game_settings")
 data class GameSettings(
     @PrimaryKey val id: Int = 1,
     val selectedLanguage: String = "TR",
-    val isDarkTheme: Boolean = true,
-    val marketSpeed: Long = 3000L,
-    // Auth (now local username-based, not Google)
-    val loggedInUsername: String? = null,
-    val activeIndicators: String = "SMA,RSI",
-    val drawingsJson: String = "[]",
+    val googleEmail: String? = null,
+    val googleName: String? = null,
+    val googleAvatarUrl: String? = null,
+    val activeIndicators: String = "SMA,RSI", // Comma-separated list of active indicators
+    val drawingsJson: String = "[]", // Serialized user drawings
     val introSeen: Boolean = false,
     val outroSeen: Boolean = false,
     val currentHouseId: String = "kiralik_kotu",
     val ownedCars: String = "",
     val activeCarId: String? = null,
     val furnitureBought: String = "",
-    val foodPlanId: Int = 1,
+    val foodPlanId: Int = 1, // 1 = Kötü, 2 = Ortalama, 3 = İyi
     val gameDayCount: Int = 1,
-    val gameMonthCount: Int = 1,
-    // Properties (comma-sep propertyId:listingPrice or just propertyId if not listed)
-    val ownedProperties: String = "",
-    val listedProperties: String = "" // "propId:price,propId2:price2"
+    val gameMonthCount: Int = 1
 )

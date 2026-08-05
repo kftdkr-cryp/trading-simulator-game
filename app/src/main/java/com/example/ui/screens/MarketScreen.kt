@@ -40,13 +40,15 @@ fun parseDrawings(serialized: String): List<LineDrawing> {
         for (line in lines) {
             if (line.isEmpty()) continue
             val parts = line.split(",")
-            if (parts.size == 4) {
+            if (parts.size >= 4) {
+                val type = if (parts.size >= 5) parts[4] else "LINE"
                 list.add(
                     LineDrawing(
                         parts[0].toFloat(),
                         parts[1].toFloat(),
                         parts[2].toFloat(),
-                        parts[3].toFloat()
+                        parts[3].toFloat(),
+                        type
                     )
                 )
             }
@@ -58,7 +60,7 @@ fun parseDrawings(serialized: String): List<LineDrawing> {
 }
 
 fun serializeDrawings(drawings: List<LineDrawing>): String {
-    return drawings.joinToString(";") { "${it.startX},${it.startY},${it.endX},${it.endY}" }
+    return drawings.joinToString(";") { "${it.startX},${it.startY},${it.endX},${it.endY},${it.type}" }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,6 +89,17 @@ fun MarketScreen(
 
     // Drawing mode toggle
     var drawingModeEnabled by remember { mutableStateOf(false) }
+    var selectedDrawingTool by remember { mutableStateOf("LINE") }
+    var chartMaximized by remember { mutableStateOf(false) }
+
+    var spotTakeProfitInput by remember { mutableStateOf("") }
+    var spotStopLossInput by remember { mutableStateOf("") }
+
+    var levTakeProfitInput by remember { mutableStateOf("") }
+    var levStopLossInput by remember { mutableStateOf("") }
+
+    var aiAnalysisResult by remember { mutableStateOf("") }
+    var aiAnalysisLoading by remember { mutableStateOf(false) }
 
     // Trade Tab (Spot = 0, Leverage = 1)
     var tradingModeTab by remember { mutableStateOf(0) }
@@ -95,12 +108,6 @@ fun MarketScreen(
     var selectedLeverageMultiplier by remember { mutableStateOf(5) }
     var leverageIsLong by remember { mutableStateOf(true) }
     var marginAmountInput by remember { mutableStateOf("100") }
-    
-    // TP/SL inputs
-    var tpPercentInput by remember { mutableStateOf("5") }
-    var slPercentInput by remember { mutableStateOf("2") }
-    var tpEnabled by remember { mutableStateOf(true) }
-    var slEnabled by remember { mutableStateOf(true) }
 
     val activeSpotPosition = playerPositions.firstOrNull { it.symbol == selectedAsset && !it.isLeverage }
     val activeLeveragePositions = playerPositions.filter { it.symbol == selectedAsset && it.isLeverage }
@@ -276,6 +283,25 @@ fun MarketScreen(
                     )
                 }
 
+                // Maximize chart toggle button (Zoom)
+                IconButton(
+                    onClick = { chartMaximized = !chartMaximized },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(
+                            if (chartMaximized) Color(0xFF00E5FF).copy(alpha = 0.2f) else Color(0xFF141A28),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .border(1.dp, if (chartMaximized) Color(0xFF00E5FF) else Color(0xFF1E273A), RoundedCornerShape(8.dp))
+                ) {
+                    Text(
+                        text = if (chartMaximized) "➖" else "➕",
+                        color = if (chartMaximized) Color(0xFF00E5FF) else Color.LightGray,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 // Delete drawings button
                 IconButton(
                     onClick = { viewModel.updateDrawings("[]") },
@@ -294,30 +320,84 @@ fun MarketScreen(
             }
         }
 
-        // 4. Drawing instruction hint when active
+        // 4. Drawing instruction hint and Tool Selection when active
         if (drawingModeEnabled) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.Yellow.copy(alpha = 0.15f)),
+                colors = CardDefaults.cardColors(containerColor = Color.Yellow.copy(alpha = 0.12f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "✍️ " + Localizer.translate("drawing_tools", lang),
-                    color = Color.Yellow,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp)
-                )
+                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "✍️ " + Localizer.translate("drawing_tools", lang),
+                        color = Color.Yellow,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = { selectedDrawingTool = "LINE" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedDrawingTool == "LINE") Color.Yellow else Color(0xFF1A2234)
+                            ),
+                            modifier = Modifier.height(28.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp)
+                        ) {
+                            Text(
+                                text = "Çizgi (Line)",
+                                color = if (selectedDrawingTool == "LINE") Color.Black else Color.LightGray,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = { selectedDrawingTool = "RAY" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedDrawingTool == "RAY") Color.Yellow else Color(0xFF1A2234)
+                            ),
+                            modifier = Modifier.height(28.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp)
+                        ) {
+                            Text(
+                                text = "Işın (Ray)",
+                                color = if (selectedDrawingTool == "RAY") Color.Black else Color.LightGray,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = { selectedDrawingTool = "HORIZONTAL" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedDrawingTool == "HORIZONTAL") Color.Yellow else Color(0xFF1A2234)
+                            ),
+                            modifier = Modifier.height(28.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp)
+                        ) {
+                            Text(
+                                text = "Yatay (H-Line)",
+                                color = if (selectedDrawingTool == "HORIZONTAL") Color.Black else Color.LightGray,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        // 5. Candlestick Chart Window
+        // 5. Candlestick Chart Window (Maximized or Standard height)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(320.dp)
+                .height(if (chartMaximized) 420.dp else 260.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .border(1.dp, Color(0xFF1E2638), RoundedCornerShape(12.dp))
         ) {
@@ -331,6 +411,7 @@ fun MarketScreen(
                 showRsi = showRsi,
                 drawings = drawingsList,
                 drawingModeEnabled = drawingModeEnabled,
+                selectedDrawingTool = selectedDrawingTool,
                 onDrawLineAdded = { newDrawing ->
                     val updated = drawingsList + newDrawing
                     viewModel.updateDrawings(serializeDrawings(updated))
@@ -379,6 +460,66 @@ fun MarketScreen(
             }
         }
 
+        // Yapay Zeka Teknik Analiz Öngörü Modülü
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF111622)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF1F293D), RoundedCornerShape(12.dp))
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🧠 Yapay Zeka Teknik Analiz Sinyali",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "%65 Başarı",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (aiAnalysisResult.isNotEmpty()) {
+                    Text(
+                        text = aiAnalysisResult,
+                        color = Color.LightGray,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        aiAnalysisLoading = true
+                        viewModel.runAiAnalysis(selectedAsset) { result ->
+                            aiAnalysisResult = result
+                            aiAnalysisLoading = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().height(34.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    if (aiAnalysisLoading) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
+                    } else {
+                        Text("Pariteyi Analiz Et / Forecast $selectedAsset", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         // 7. Trading Terminals
         if (tradingModeTab == 0) {
             // SPOT TRADING TERMINAL
@@ -411,6 +552,40 @@ fun MarketScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    // Take Profit and Stop Loss fields for Spot Order
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = spotTakeProfitInput,
+                            onValueChange = { spotTakeProfitInput = it },
+                            label = { Text("Kâr Al (TP)", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = Color(0xFF00E676),
+                                unfocusedBorderColor = Color(0xFF1E273A)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedTextField(
+                            value = spotStopLossInput,
+                            onValueChange = { spotStopLossInput = it },
+                            label = { Text("Zarar Durdur (SL)", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = Color(0xFFFF1744),
+                                unfocusedBorderColor = Color(0xFF1E273A)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
                     // Spot positions held summary
                     if (activeSpotPosition != null) {
                         Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2234)), modifier = Modifier.fillMaxWidth()) {
@@ -426,7 +601,11 @@ fun MarketScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Button(
-                            onClick = { viewModel.buyAsset() },
+                            onClick = {
+                                val tp = spotTakeProfitInput.toDoubleOrNull() ?: 0.0
+                                val sl = spotStopLossInput.toDoubleOrNull() ?: 0.0
+                                viewModel.buyAsset(takeProfit = tp, stopLoss = sl)
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
@@ -435,7 +614,11 @@ fun MarketScreen(
                         }
 
                         Button(
-                            onClick = { viewModel.sellAsset() },
+                            onClick = {
+                                val tp = spotTakeProfitInput.toDoubleOrNull() ?: 0.0
+                                val sl = spotStopLossInput.toDoubleOrNull() ?: 0.0
+                                viewModel.sellAsset(takeProfit = tp, stopLoss = sl)
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF1744)),
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
@@ -543,41 +726,37 @@ fun MarketScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // TP/SL Row
+                    // Take Profit and Stop Loss inputs for Leverage Order
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // TP Input
                         OutlinedTextField(
-                            value = tpPercentInput,
-                            onValueChange = { tpPercentInput = it },
-                            label = { Text(Localizer.translate("take_profit", lang), fontSize = 10.sp) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            value = levTakeProfitInput,
+                            onValueChange = { levTakeProfitInput = it },
+                            label = { Text("Kâr Al (TP)", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color(0xFF00E676),
-                                unfocusedTextColor = Color(0xFF00E676),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
                                 focusedBorderColor = Color(0xFF00E676),
-                                unfocusedBorderColor = Color(0xFF1E2638)
+                                unfocusedBorderColor = Color(0xFF1E273A)
                             ),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
+                            modifier = Modifier.weight(1f)
                         )
-                        
-                        // SL Input
+
                         OutlinedTextField(
-                            value = slPercentInput,
-                            onValueChange = { slPercentInput = it },
-                            label = { Text(Localizer.translate("stop_loss", lang), fontSize = 10.sp) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            value = levStopLossInput,
+                            onValueChange = { levStopLossInput = it },
+                            label = { Text("Zarar Durdur (SL)", fontSize = 10.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color(0xFFFF1744),
-                                unfocusedTextColor = Color(0xFFFF1744),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
                                 focusedBorderColor = Color(0xFFFF1744),
-                                unfocusedBorderColor = Color(0xFF1E2638)
+                                unfocusedBorderColor = Color(0xFF1E273A)
                             ),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
+                            modifier = Modifier.weight(1f)
                         )
                     }
 
@@ -613,16 +792,16 @@ fun MarketScreen(
                     Button(
                         onClick = {
                             val marginDouble = marginAmountInput.toDoubleOrNull() ?: 0.0
-                            val tpPercent = tpPercentInput.toDoubleOrNull()
-                            val slPercent = slPercentInput.toDoubleOrNull()
+                            val tp = levTakeProfitInput.toDoubleOrNull() ?: 0.0
+                            val sl = levStopLossInput.toDoubleOrNull() ?: 0.0
                             if (marginDouble > 0) {
                                 viewModel.executeUserLeverageTrade(
                                     symbol = selectedAsset,
                                     isLong = leverageIsLong,
                                     marginAmount = marginDouble,
                                     leverage = selectedLeverageMultiplier,
-                                    takeProfitPercent = tpPercent,
-                                    stopLossPercent = slPercent
+                                    takeProfit = tp,
+                                    stopLoss = sl
                                 )
                             }
                         },
@@ -716,65 +895,20 @@ fun MarketScreen(
                             }
                         }
 
-                        // TP/SL Display Row
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column {
-                                Text(Localizer.translate("take_profit", lang), color = Color(0xFF00E676), fontSize = 10.sp)
-                                Text(
-                                    text = pos.takeProfitPrice?.let { "$${String.format("%.2f", it)}" } ?: "-",
-                                    color = Color(0xFF00E676),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(Localizer.translate("stop_loss", lang), color = Color(0xFFFF1744), fontSize = 10.sp)
-                                Text(
-                                    text = pos.stopLossPrice?.let { "$${String.format("%.2f", it)}" } ?: "-",
-                                    color = Color(0xFFFF1744),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Button(
+                            onClick = { viewModel.closeUserLeveragePosition(pos.id) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF261820)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp),
+                            shape = RoundedCornerShape(6.dp)
                         ) {
-                            Button(
-                                onClick = { viewModel.closeUserLeveragePosition(pos.id) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF261820)),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(36.dp),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = Localizer.translate("close_position", lang),
-                                    color = Color(0xFFFF1744),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            
-                            Button(
-                                onClick = {
-                                    viewModel.updatePositionTpSl(pos.id, 5.0, 2.0)
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2638)),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(36.dp),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = "🎯 TP/SL",
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                            Text(
+                                text = Localizer.translate("close_position", lang),
+                                color = Color(0xFFFF1744),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

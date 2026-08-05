@@ -56,9 +56,9 @@ fun DashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 0. Player Profile Banner
+        // 0. High-Fidelity Google Active Profile Banner
         settings?.let { s ->
-            if (s.loggedInUsername != null) {
+            if (s.googleEmail != null) {
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF141A28)),
@@ -89,7 +89,7 @@ fun DashboardScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = s.loggedInUsername.take(1).uppercase(),
+                                text = (s.googleName ?: "P").take(1).uppercase(),
                                 color = Color.Black,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp
@@ -103,7 +103,7 @@ fun DashboardScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = s.loggedInUsername,
+                                    text = s.googleName ?: "Trader Player",
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp
@@ -116,7 +116,7 @@ fun DashboardScreen(
                                 )
                             }
                             Text(
-                                text = if (lang == "TR") "Yerel Hesap" else "Local Account",
+                                text = s.googleEmail ?: "",
                                 color = Color.Gray,
                                 fontSize = 11.sp
                             )
@@ -130,7 +130,7 @@ fun DashboardScreen(
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = if (lang == "TR") "AKTİF" else "ACTIVE",
+                                text = "GOOGLE SECURE",
                                 color = Color(0xFF00E676),
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold

@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -75,16 +74,6 @@ fun IntroStoryScreen(
 
     val currentScene = scenes[currentSceneIdx]
 
-    // Trigger auto scene transitions
-    LaunchedEffect(currentSceneIdx) {
-        delay(currentScene.durationMs)
-        if (currentSceneIdx < scenes.lastIndex) {
-            currentSceneIdx++
-        } else {
-            onComplete()
-        }
-    }
-
     // Animation progress for scene elements
     val transitionState = rememberInfiniteTransition(label = "particles")
     val heartbeat by transitionState.animateFloat(
@@ -119,6 +108,13 @@ fun IntroStoryScreen(
                 .padding(24.dp)
                 .background(Color(0xCD0A0E17), RoundedCornerShape(16.dp))
                 .border(1.dp, Color(0xFF1E273A), RoundedCornerShape(16.dp))
+                .clickable {
+                    if (currentSceneIdx < scenes.lastIndex) {
+                        currentSceneIdx++
+                    } else {
+                        onComplete()
+                    }
+                }
                 .padding(20.dp)
         ) {
             Column(
@@ -147,15 +143,34 @@ fun IntroStoryScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    Text(
-                        text = if (lang == "TR") "GEÇ / SKIP >>" else "SKIP >>",
-                        color = Color(0xFFFFC107),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier
-                            .clickable { onComplete() }
-                            .padding(4.dp)
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (lang == "TR") "GEÇ / SKIP" else "SKIP",
+                            color = Color.Gray,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable { onComplete() }
+                                .padding(4.dp)
+                        )
+
+                        Text(
+                            text = if (currentSceneIdx < scenes.lastIndex) {
+                                if (lang == "TR") "SONRAKİ >>" else "NEXT >>"
+                            } else {
+                                if (lang == "TR") "BAŞLAT >>" else "START >>"
+                            },
+                            color = Color(0xFFFFC107),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier
+                                .background(Color(0xFF1E273A), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
         }
@@ -198,13 +213,6 @@ fun OutroStoryScreen(
 
     val currentScene = scenes[currentSceneIdx]
 
-    LaunchedEffect(currentSceneIdx) {
-        if (currentScene.durationMs < 50000) {
-            delay(currentScene.durationMs)
-            currentSceneIdx++
-        }
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -228,6 +236,13 @@ fun OutroStoryScreen(
                     .padding(24.dp)
                     .background(Color(0xCD0A0E17), RoundedCornerShape(16.dp))
                     .border(1.dp, Color(0xFF1E273A), RoundedCornerShape(16.dp))
+                    .clickable {
+                        if (currentSceneIdx < 2) {
+                            currentSceneIdx++
+                        } else {
+                            currentSceneIdx = 3
+                        }
+                    }
                     .padding(20.dp)
             ) {
                 Column(
@@ -256,15 +271,30 @@ fun OutroStoryScreen(
                             fontWeight = FontWeight.Bold
                         )
 
-                        Text(
-                            text = if (lang == "TR") "SONA GEÇ >>" else "SKIP TO CREDITS >>",
-                            color = Color(0xFFFFC107),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Black,
-                            modifier = Modifier
-                                .clickable { currentSceneIdx = 3 }
-                                .padding(4.dp)
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (lang == "TR") "SONA GEÇ / SKIP" else "SKIP TO END",
+                                color = Color.Gray,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clickable { currentSceneIdx = 3 }
+                                    .padding(4.dp)
+                            )
+
+                            Text(
+                                text = if (lang == "TR") "SONRAKİ >>" else "NEXT >>",
+                                color = Color(0xFFFFC107),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier
+                                    .background(Color(0xFF1E273A), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -818,238 +848,6 @@ fun CreditsIllustration(
                         fontWeight = FontWeight.Bold
                     )
                 }
-            }
-        }
-    }
-}
-
-
-// =================== LEVEL-UP CİNEMATİK ANİMASYON ===================
-
-@Composable
-fun LevelUpCinematicScreen(
-    level: Int,
-    netWorth: Double,
-    lang: String,
-    onDismiss: () -> Unit
-) {
-    val milestoneTitle = when {
-        netWorth >= 1_000_000.0 -> if (lang == "TR") "FİNANSAL ÖZGÜRLÜK" else "FINANCIAL FREEDOM"
-        netWorth >= 100_000.0  -> if (lang == "TR") "BORSA EFENDİSİ"    else "MARKET MASTER"
-        netWorth >= 10_000.0   -> if (lang == "TR") "BALINA AVCISI"      else "WHALE HUNTER"
-        netWorth >= 2_000.0    -> if (lang == "TR") "AMATÖR YATIRIMCI"   else "AMATEUR INVESTOR"
-        else                   -> if (lang == "TR") "BAŞLANGICI YAPTIK"  else "FIRST STEPS"
-    }
-    val milestoneIcon = when {
-        netWorth >= 1_000_000.0 -> "🏆"
-        netWorth >= 100_000.0   -> "👑"
-        netWorth >= 10_000.0    -> "🐋"
-        netWorth >= 2_000.0     -> "📈"
-        else                    -> "🌱"
-    }
-    val milestoneColor = when {
-        netWorth >= 100_000.0 -> Color(0xFFFFD700)
-        netWorth >= 10_000.0  -> Color(0xFF29B6F6)
-        else                  -> Color(0xFF00E676)
-    }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "levelup")
-    val glowAnim by infiniteTransition.animateFloat(
-        initialValue = 0.4f, targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "glow"
-    )
-    val starAnim by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing)),
-        label = "stars"
-    )
-    val scaleAnim by animateFloatAsState(
-        targetValue = 1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "scale"
-    )
-    val alphaAnim by animateFloatAsState(
-        targetValue = 1f, animationSpec = tween(600),
-        label = "alpha"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xCC000000))
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            // Radial burst glow
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(milestoneColor.copy(alpha = glowAnim * 0.25f), Color.Transparent),
-                    center = Offset(cx, cy), radius = size.minDimension * 0.7f
-                ),
-                center = Offset(cx, cy), radius = size.minDimension * 0.7f
-            )
-            // Rotating star particles
-            for (i in 0..24) {
-                val angle = (i / 25f * 360f + starAnim * 360f) * (Math.PI / 180.0)
-                val r = size.minDimension * 0.35f + (i % 3) * 40f
-                val sx = cx + Math.cos(angle).toFloat() * r
-                val sy = cy + Math.sin(angle).toFloat() * r
-                drawCircle(milestoneColor.copy(alpha = ((i % 3 + 1) / 3f) * glowAnim * 0.8f), center = Offset(sx, sy), radius = 4f + (i % 4).toFloat() * 2f)
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .background(Color(0xFF0B0E14), RoundedCornerShape(24.dp))
-                .border(2.dp, milestoneColor.copy(alpha = glowAnim), RoundedCornerShape(24.dp))
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(text = milestoneIcon, fontSize = 60.sp,
-                modifier = Modifier.graphicsLayer { scaleX = scaleAnim; scaleY = scaleAnim; alpha = alphaAnim })
-
-            Text(
-                text = if (lang == "TR") "BÖLÜM $level TAMAMLANDI!" else "CHAPTER $level COMPLETE!",
-                fontSize = 13.sp, color = Color.Gray, fontWeight = FontWeight.Bold,
-                letterSpacing = 3.sp, textAlign = TextAlign.Center
-            )
-            Text(
-                text = milestoneTitle,
-                fontSize = 26.sp, color = milestoneColor, fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = if (lang == "TR") "Net Değer: $${"%.0f".format(netWorth)}" else "Net Worth: $${"%.0f".format(netWorth)}",
-                fontSize = 15.sp, color = Color.White, fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = milestoneColor),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
-                Text(
-                    text = if (lang == "TR") "DEVAM ET ▶" else "CONTINUE ▶",
-                    color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp
-                )
-            }
-        }
-    }
-}
-
-
-// =================== LÜKS ARABA SATIN ALMA CİNEMATİK ===================
-
-@Composable
-fun CarPurchaseCinematicScreen(
-    carName: String,
-    lang: String,
-    onDismiss: () -> Unit
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "car")
-    val shimmer by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing)),
-        label = "shimmer"
-    )
-    val glowPulse by infiniteTransition.animateFloat(
-        initialValue = 0.5f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "pulse"
-    )
-    val slideIn by animateFloatAsState(
-        targetValue = 0f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-        label = "slide"
-    )
-
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xDD000000)).clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            // Spotlight from above
-            drawPath(
-                path = Path().apply {
-                    moveTo(cx - 60f, 0f); lineTo(cx + 60f, 0f)
-                    lineTo(cx + 200f, cy + 100f); lineTo(cx - 200f, cy + 100f); close()
-                },
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xAAFFD700), Color(0x00FFD700)),
-                    startY = 0f, endY = cy + 100f
-                )
-            )
-            // Ground reflection
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0x00FFD700), Color(0x22FFD700)),
-                    startY = cy + 100f, endY = size.height
-                ),
-                topLeft = Offset(0f, cy + 100f), size = androidx.compose.ui.geometry.Size(size.width, size.height - cy - 100f)
-            )
-            // Particle sparks
-            for (i in 0..30) {
-                val angle = (i / 31f * 360f + shimmer * 360f) * (Math.PI / 180.0)
-                val r = 100f + (i % 5) * 30f
-                val sx = cx + Math.cos(angle).toFloat() * r
-                val sy = cy + Math.sin(angle).toFloat() * r * 0.5f
-                drawCircle(
-                    color = Color(0xFFFFD700).copy(alpha = ((i % 3 + 1) / 3f) * glowPulse * 0.9f),
-                    center = Offset(sx, sy), radius = 3f + (i % 3).toFloat()
-                )
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .graphicsLayer { translationY = slideIn }
-                .background(Color(0xFF0A0C12), RoundedCornerShape(24.dp))
-                .border(2.dp, Color(0xFFFFD700).copy(alpha = glowPulse), RoundedCornerShape(24.dp))
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text(text = "🏎️", fontSize = 72.sp)
-
-            Text(
-                text = if (lang == "TR") "YENİ ARABA SATIN ALINDI!" else "NEW CAR PURCHASED!",
-                fontSize = 12.sp, color = Color.Gray, letterSpacing = 3.sp, textAlign = TextAlign.Center
-            )
-            Text(
-                text = carName,
-                fontSize = 24.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = if (lang == "TR")
-                    "Tebrikler! Lüks arabanız garaja eklendi.\nSürüş sekmesinden 3D sürüşe çıkabilirsiniz! 🚀"
-                    else "Congratulations! Your luxury car is now in the garage.\nHead to the Drive tab for a 3D city ride! 🚀",
-                fontSize = 13.sp, color = Color.LightGray, textAlign = TextAlign.Center, lineHeight = 20.sp
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
-                Text(
-                    text = if (lang == "TR") "GARAJIMA GİT 🚗" else "GO TO GARAGE 🚗",
-                    color = Color.Black, fontWeight = FontWeight.Black, fontSize = 16.sp
-                )
             }
         }
     }

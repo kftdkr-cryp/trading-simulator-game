@@ -20,14 +20,14 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = GoldPrimary,
-    secondary = SecondarySlate,
-    background = DarkNavyBg,
-    surface = SecondarySlate,
-    onPrimary = Color.Black,
-    onSecondary = Color.White,
-    onBackground = Color.White,
-    onSurface = Color.White,
+    primary = Color(0xFF1E3A8A),
+    secondary = Color(0xFFE2E8F0),
+    background = Color(0xFFF8FAFC),
+    surface = Color.White,
+    onPrimary = Color.White,
+    onSecondary = Color(0xFF1E293B),
+    onBackground = Color(0xFF0F172A),
+    onSurface = Color(0xFF0F172A),
     error = DangerRed
 )
 

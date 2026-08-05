@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [MarketCandle::class, Trader::class, TraderPosition::class, NewsLog::class, GameSettings::class, UserAccount::class],
-    version = 5,
+    entities = [MarketCandle::class, Trader::class, TraderPosition::class, NewsLog::class, GameSettings::class],
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -15,7 +15,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun traderDao(): TraderDao
     abstract fun newsDao(): NewsDao
     abstract fun settingsDao(): SettingsDao
-    abstract fun userAccountDao(): UserAccountDao
 
     companion object {
         @Volatile
