@@ -21,7 +21,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import android.content.Intent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -705,7 +707,9 @@ fun GarageTab(
     onSelectActiveCar: (String) -> Unit,
     onStartDrive: () -> Unit
 ) {
+    val context = LocalContext.current
     val carsList = ownedCars.split(",").filter { it.isNotEmpty() }
+    var showCarDriveSelector by remember { mutableStateOf(false) }
 
     val garageCatalog = listOf(
         CarOption("rust_bucket", if (lang == "TR") "🚗 Paslı Tofaş Şase (Murat 124)" else "🚗 Rust Murat 124", 800.0, "Paslı, eski"),
@@ -714,6 +718,78 @@ fun GarageTab(
         CarOption("tesla_model_s", if (lang == "TR") "⚡ Lüks Tesla Model S" else "⚡ Tesla Model S", 75000.0, "Otopilot & Sessiz"),
         CarOption("ferrari", if (lang == "TR") "🐎 Kırmızı Ferrari F40" else "🐎 Red Ferrari F40", 250000.0, "Yırtıcı Güç")
     )
+
+    if (showCarDriveSelector) {
+        AlertDialog(
+            onDismissRequest = { showCarDriveSelector = false },
+            containerColor = Color(0xFF0F1422),
+            title = {
+                Text(
+                    text = if (lang == "TR") "Sürüş İçin Araç Seçin" else "Select Car to Drive",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val ownedOptions = garageCatalog.filter { carsList.contains(it.id) }
+                    if (ownedOptions.isEmpty()) {
+                        Text(
+                            text = if (lang == "TR") "Sürüşe çıkmak için önce galeriden bir araba satın almalısınız!" else "You must purchase a car from the dealership first to drive!",
+                            color = Color.Gray,
+                            fontSize = 14.sp
+                        )
+                    } else {
+                        ownedOptions.forEach { car ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF1E283C), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        showCarDriveSelector = false
+                                        val intent = Intent(context, com.example.DrivingActivity::class.java).apply {
+                                            putExtra("car_id", car.id)
+                                            putExtra("car_name", car.name)
+                                            putExtra("lang", lang)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = car.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text(text = car.desc, color = Color.Gray, fontSize = 11.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color(0xFF00E676), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = if (lang == "TR") "SÜR" else "DRIVE",
+                                        color = Color.Black,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCarDriveSelector = false }) {
+                    Text(text = if (lang == "TR") "İptal" else "Cancel", color = Color(0xFFFFC107))
+                }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -738,8 +814,8 @@ fun GarageTab(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = if (lang == "TR") 
-                            "Sahip olduğunuz arabalarla retro 3D sokaklarda sürüşe çıkabilir, engellerden kaçarak yoldaki paraları toplayabilirsiniz! Sürüş yapmak bakiye kazandırır."
-                            else "Drive your cars in retro pseudo-3D city roads, dodge obstacles, and collect floating cash! Driving awards you raw trading balance.",
+                            "Sahip olduğunuz arabalarla retro 3D haritada dilediğiniz gibi sürüş yapabilir, serbestçe şehri keşfedebilirsiniz!"
+                            else "Drive your owned cars freely in the retro 3D map, and explore the streets as you wish!",
                         fontSize = 12.sp,
                         color = Color.LightGray
                     )
@@ -747,7 +823,7 @@ fun GarageTab(
                     if (carsList.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(14.dp))
                         Button(
-                            onClick = onStartDrive,
+                            onClick = { showCarDriveSelector = true },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier

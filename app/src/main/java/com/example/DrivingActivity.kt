@@ -32,6 +32,7 @@ class DrivingActivity : ComponentActivity() {
 
         val carId = intent.getStringExtra("car_id") ?: "car_standard"
         val carName = intent.getStringExtra("car_name") ?: "Standard"
+        val lang = intent.getStringExtra("lang") ?: "TR"
 
         webView = WebView(this)
         setContentView(webView)
@@ -56,7 +57,7 @@ class DrivingActivity : ComponentActivity() {
             else -> "0x2255ff"
         }
 
-        webView.loadUrl("file:///android_asset/driving.html#$carId,$carColor,${carName.replace(" ","_")}")
+        webView.loadUrl("file:///android_asset/driving.html#$carId,$carColor,${carName.replace(" ","_")},$lang")
     }
 
     override fun onBackPressed() {

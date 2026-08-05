@@ -130,7 +130,7 @@ fun DashboardScreen(
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = if (lang == "TR") "GÜVENLİ OTURUM" else "SECURE SESSION",
+                                text = Localizer.translate("secure_session", lang),
                                 color = Color(0xFF00E676),
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold
@@ -166,28 +166,28 @@ fun DashboardScreen(
         val milestoneIcon: String
 
         if (netWorth < 500.0) {
-            milestoneTitle = "Bölüm 1: Sıfırdan Başlangıç"
-            milestoneDesc = "Borsada adını duyurmak için ilk adımı attın. Mini oyunlarla veya akıllı işlemlerle sermaye biriktir."
+            milestoneTitle = Localizer.translate("milestone_1_title", lang)
+            milestoneDesc = Localizer.translate("milestone_1_desc", lang)
             milestoneTarget = 500.0
             milestoneIcon = "🌱"
         } else if (netWorth < 2000.0) {
-            milestoneTitle = "Bölüm 2: Amatör Yatırımcı"
-            milestoneDesc = "Piyasanın acımasız olduğunu fark ettin. İlk kaldıraçlı işlemlerinde likit olmamaya çalış!"
+            milestoneTitle = Localizer.translate("milestone_2_title", lang)
+            milestoneDesc = Localizer.translate("milestone_2_desc", lang)
             milestoneTarget = 2000.0
             milestoneIcon = "📈"
         } else if (netWorth < 10000.0) {
-            milestoneTitle = "Bölüm 3: Balina Avcısı"
-            milestoneDesc = "Artık büyük balıklar seni fark etmeye başladı. Twitter akışındaki uzmanları kopyalayarak güç kazan."
+            milestoneTitle = Localizer.translate("milestone_3_title", lang)
+            milestoneDesc = Localizer.translate("milestone_3_desc", lang)
             milestoneTarget = 10000.0
             milestoneIcon = "🐋"
         } else if (netWorth < 100000.0) {
-            milestoneTitle = "Bölüm 4: Borsa Efendisi"
-            milestoneDesc = "Milyonerler kulübüne giriş bileti! Sektörün en büyük 10 yapay zekasını alt etmek için son viraj."
+            milestoneTitle = Localizer.translate("milestone_4_title", lang)
+            milestoneDesc = Localizer.translate("milestone_4_desc", lang)
             milestoneTarget = 100000.0
             milestoneIcon = "👑"
         } else {
-            milestoneTitle = "Bölüm 5: Finansal Özgürlük"
-            milestoneDesc = "Piyasanın efendisi oldun, 200 yapay zekayı dize getirdin ve Margin Call kabusunu sonsuza dek bitirdin!"
+            milestoneTitle = Localizer.translate("milestone_5_title", lang)
+            milestoneDesc = Localizer.translate("milestone_5_desc", lang)
             milestoneTarget = 1000000.0
             milestoneIcon = "🏆"
         }
@@ -217,7 +217,7 @@ fun DashboardScreen(
                             fontSize = 14.sp
                         )
                         Text(
-                            text = if (lang == "TR") "Kariyer Hedefiniz" else "Career Progress",
+                            text = Localizer.translate("career_progress", lang),
                             color = Color.Gray,
                             fontSize = 10.sp
                         )
@@ -250,13 +250,13 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Net Değer: $${String.format("%,.2f", netWorth)}",
+                        text = "${Localizer.translate("net_worth", lang)}: $${String.format("%,.2f", netWorth)}",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
                     )
                     Text(
-                        text = "Hedef: $${String.format("%,.2f", milestoneTarget)}",
+                        text = "${Localizer.translate("target", lang)}: $${String.format("%,.2f", milestoneTarget)}",
                         color = Color.Gray,
                         fontSize = 11.sp
                     )
@@ -289,7 +289,7 @@ fun DashboardScreen(
                             .background(Color(0xFF00E676), CircleShape)
                     )
                     Text(
-                        text = if (lang == "TR") "PİYASA AKTİF" else "LIVE MARKET",
+                        text = Localizer.translate("live_market", lang),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
@@ -399,7 +399,7 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = if (lang == "TR") "Oynanış İpucu" else "Gameplay Tip",
+                        text = Localizer.translate("gameplay_tip", lang),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp

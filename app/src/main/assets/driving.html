@@ -19,8 +19,31 @@ body{background:#000;overflow:hidden;touch-action:none;}
 #hud{position:fixed;top:16px;left:50%;transform:translateX(-50%);display:flex;gap:20px;align-items:center;pointer-events:none;}
 .hud-box{background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:8px 16px;color:#fff;font-family:monospace;font-size:14px;backdrop-filter:blur(6px);}
 .hud-val{font-size:22px;font-weight:bold;color:#FFD700;}
-#back-btn{position:fixed;top:16px;left:16px;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);border-radius:12px;padding:10px 18px;color:#fff;font-size:14px;font-family:monospace;cursor:pointer;pointer-events:all;z-index:20;backdrop-filter:blur(6px);}
-#back-btn:active{background:rgba(255,255,255,0.2);}
+#back-btn{
+  position:fixed;
+  top:16px;
+  left:16px;
+  background:rgba(0,0,0,0.75);
+  border:2px solid rgba(255,255,255,0.4);
+  border-radius:50%;
+  width:50px;
+  height:50px;
+  color:#fff;
+  font-size:22px;
+  font-weight:bold;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  pointer-events:all;
+  z-index:100;
+  backdrop-filter:blur(8px);
+  transition:all 0.2s ease;
+}
+#back-btn:active{
+  background:rgba(255,255,255,0.25);
+  transform:scale(0.9);
+}
 #car-label{position:fixed;top:16px;right:16px;background:rgba(0,0,0,0.6);border:1px solid rgba(255,196,7,0.4);border-radius:12px;padding:8px 14px;color:#FFC107;font-size:13px;font-family:monospace;pointer-events:none;backdrop-filter:blur(6px);}
 </style>
 </head>
@@ -46,8 +69,8 @@ body{background:#000;overflow:hidden;touch-action:none;}
   <div class="hud-box">🚗 <span class="hud-val" id="spd">0</span> km/h</div>
   <div class="hud-box">🌆 <span class="hud-val" id="dist">0</span> m</div>
 </div>
-<button id="back-btn" onclick="history.back()">✕ Çıkış</button>
-<div id="car-label" id="car-label">🚗 Sürüş Modu</div>
+<button id="back-btn" onclick="history.back()">✕</button>
+<div id="car-label">🚗 Sürüş Modu</div>
 
 <script>
 // Three.js CDN - load inline minimal renderer for WebView compatibility
@@ -62,7 +85,8 @@ const hash = location.hash.slice(1).split(',');
 const carId = hash[0] || 'car_standard';
 const carColorHex = parseInt(hash[1] || '0x2255ff');
 const carName = (hash[2] || 'Araç').replace(/_/g,' ');
-document.getElementById('car-label').textContent = '🚗 ' + carName;
+const lang = hash[3] || 'TR';
+document.getElementById('car-label').textContent = (lang === 'TR' ? '🚗 Sürüş Modu: ' : '🚗 Drive Mode: ') + carName;
 
 // ── Math helpers ──────────────────────────────────────────────────────────────
 const m4={
@@ -256,10 +280,38 @@ for(let i=0;i<20;i++){
 let carX=0,carZ=0,carY=0;
 let carSpeed=0,carAngle=0;
 let totalDist=0;
-const MAX_SPEED=0.8;
-const ACCEL=0.025;
-const DECEL=0.018;
-const STEER=0.04;
+
+// ── Car specifications based on carId ─────────────────────────────────────────
+let maxSpeedVal = 0.8;
+let accelVal = 0.025;
+let steerVal = 0.04;
+
+if (carId === "rust_bucket") {
+  maxSpeedVal = 0.55;
+  accelVal = 0.018;
+  steerVal = 0.035;
+} else if (carId === "tofas_sahin") {
+  maxSpeedVal = 0.85;
+  accelVal = 0.028;
+  steerVal = 0.048;
+} else if (carId === "bmw_m3") {
+  maxSpeedVal = 1.35;
+  accelVal = 0.045;
+  steerVal = 0.052;
+} else if (carId === "tesla_model_s") {
+  maxSpeedVal = 1.65;
+  accelVal = 0.065;
+  steerVal = 0.045;
+} else if (carId === "ferrari") {
+  maxSpeedVal = 2.25;
+  accelVal = 0.085;
+  steerVal = 0.055;
+}
+
+const MAX_SPEED = maxSpeedVal;
+const ACCEL = accelVal;
+const DECEL = 0.018;
+const STEER = steerVal;
 const LANE_LIMIT=5.5;
 
 // Wheel rotation
@@ -464,42 +516,97 @@ function frame(ts){
   // CAR body
   {
     const rY=m4.rotationY(-carAngle);
-    const bodyM=m4.mul(m4.translation(carX,0.55,carZ),m4.mul(rY,m4.scale(3.8,0.7,1.8)));
-    draw(bodyM,carColor,0.95);
+
+    let carLength = 3.8;
+    let carHeight = 0.7;
+    let carWidth = 1.8;
+    let cabinLength = 1.8;
+    let cabinHeight = 0.6;
+    let cabinWidth = 1.6;
+    let cabinOffset = 0.3;
+
+    if (carId === "rust_bucket") {
+      carLength = 3.2;
+      carHeight = 0.75;
+      carWidth = 1.5;
+      cabinLength = 1.6;
+      cabinHeight = 0.65;
+      cabinWidth = 1.3;
+      cabinOffset = 0.1;
+    } else if (carId === "tofas_sahin") {
+      carLength = 4.0;
+      carHeight = 0.8;
+      carWidth = 1.65;
+      cabinLength = 2.0;
+      cabinHeight = 0.65;
+      cabinWidth = 1.45;
+      cabinOffset = 0.15;
+    } else if (carId === "bmw_m3") {
+      carLength = 4.2;
+      carHeight = 0.75;
+      carWidth = 1.8;
+      cabinLength = 2.1;
+      cabinHeight = 0.6;
+      cabinWidth = 1.55;
+      cabinOffset = 0.2;
+    } else if (carId === "tesla_model_s") {
+      carLength = 4.5;
+      carHeight = 0.7;
+      carWidth = 1.9;
+      cabinLength = 2.4;
+      cabinHeight = 0.55;
+      cabinWidth = 1.65;
+      cabinOffset = 0.3;
+    } else if (carId === "ferrari") {
+      carLength = 4.4;
+      carHeight = 0.55;
+      carWidth = 2.0;
+      cabinLength = 1.8;
+      cabinHeight = 0.45;
+      cabinWidth = 1.6;
+      cabinOffset = -0.1;
+    }
+
+    const bodyM=m4.mul(m4.translation(carX, 0.55, carZ), m4.mul(rY, m4.scale(carLength, carHeight, carWidth)));
+    draw(bodyM, carColor, 0.95);
+
     // cabin
-    const cabinM=m4.mul(m4.translation(carX+0.3,1.15,carZ),m4.mul(rY,m4.scale(1.8,0.6,1.6)));
-    draw(cabinM,[carColor[0]*0.7,carColor[1]*0.7,carColor[2]*0.7],0.95);
+    const cabinM=m4.mul(m4.translation(carX + Math.cos(-carAngle)*cabinOffset, 0.55 + carHeight/2 + cabinHeight/2, carZ + Math.sin(-carAngle)*cabinOffset), m4.mul(rY, m4.scale(cabinLength, cabinHeight, cabinWidth)));
+    draw(cabinM, [carColor[0]*0.7, carColor[1]*0.7, carColor[2]*0.7], 0.95);
+
     // windshield
-    const wsM=m4.mul(m4.translation(carX+1.2,1.0,carZ),m4.mul(rY,m4.scale(0.05,0.5,1.4)));
-    draw(wsM,[0.4,0.7,0.9],0.95);
+    const wsM=m4.mul(m4.translation(carX + Math.cos(-carAngle)*(cabinOffset + cabinLength/2), 0.55 + carHeight/2 + cabinHeight/2 - 0.1, carZ + Math.sin(-carAngle)*(cabinOffset + cabinLength/2)), m4.mul(rY, m4.scale(0.05, cabinHeight*0.8, cabinWidth*0.9)));
+    draw(wsM, [0.4, 0.7, 0.9], 0.95);
 
     // Wheels (4)
     const wr=m4.rotationX(wheelRot);
-    [[-1.5,-0.8],[-1.5,0.8],[1.2,-0.8],[1.2,0.8]].forEach(([wfb,wlr])=>{
-      // world position of wheel
+    const wfbOffset = carLength * 0.35;
+    const wlrOffset = carWidth * 0.45;
+    [[-wfbOffset, -wlrOffset], [-wfbOffset, wlrOffset], [wfbOffset - 0.3, -wlrOffset], [wfbOffset - 0.3, wlrOffset]].forEach(([wfb, wlr]) => {
       const wx=carX+Math.cos(-carAngle)*wfb-Math.sin(-carAngle)*wlr;
       const wz=carZ+Math.sin(-carAngle)*wfb+Math.cos(-carAngle)*wlr;
-      const wm=m4.mul(m4.translation(wx,0.32,wz),m4.mul(rY,m4.mul(wr,m4.scale(0.6,0.6,0.55))));
-      draw(wm,[0.08,0.08,0.08],0.95);
+      const wm=m4.mul(m4.translation(wx, 0.32, wz), m4.mul(rY, m4.mul(wr, m4.scale(0.6, 0.6, 0.55))));
+      draw(wm, [0.08, 0.08, 0.08], 0.95);
       // hub
-      const hm=m4.mul(m4.translation(wx,0.32,wz),m4.mul(rY,m4.scale(0.25,0.25,0.6)));
-      draw(hm,[0.7,0.7,0.75],0.95);
+      const hm=m4.mul(m4.translation(wx, 0.32, wz), m4.mul(rY, m4.scale(0.25, 0.25, 0.6)));
+      draw(hm, [0.7, 0.7, 0.75], 0.95);
     });
 
     // Headlights
-    const hlL=m4.mul(m4.translation(carX+1.9,0.55,carZ-0.6),m4.mul(rY,m4.scale(0.15,0.25,0.25)));
-    draw(hlL,[1,0.97,0.8],0.95);
-    const hlR=m4.mul(m4.translation(carX+1.9,0.55,carZ+0.6),m4.mul(rY,m4.scale(0.15,0.25,0.25)));
-    draw(hlR,[1,0.97,0.8],0.95);
+    const hlL=m4.mul(m4.translation(carX + Math.cos(-carAngle)*(carLength/2), 0.55, carZ - Math.sin(-carAngle)*(carLength/2) - wlrOffset), m4.mul(rY, m4.scale(0.15, 0.25, 0.25)));
+    draw(hlL, [1, 0.97, 0.8], 0.95);
+    const hlR=m4.mul(m4.translation(carX + Math.cos(-carAngle)*(carLength/2), 0.55, carZ - Math.sin(-carAngle)*(carLength/2) + wlrOffset), m4.mul(rY, m4.scale(0.15, 0.25, 0.25)));
+    draw(hlR, [1, 0.97, 0.8], 0.95);
+
     // Taillights
-    const tlL=m4.mul(m4.translation(carX-1.9,0.55,carZ-0.6),m4.mul(rY,m4.scale(0.15,0.2,0.2)));
-    draw(tlL,[0.9,0.05,0.05],0.95);
-    const tlR=m4.mul(m4.translation(carX-1.9,0.55,carZ+0.6),m4.mul(rY,m4.scale(0.15,0.2,0.2)));
-    draw(tlR,[0.9,0.05,0.05],0.95);
+    const tlL=m4.mul(m4.translation(carX - Math.cos(-carAngle)*(carLength/2), 0.55, carZ + Math.sin(-carAngle)*(carLength/2) - wlrOffset), m4.mul(rY, m4.scale(0.15, 0.2, 0.2)));
+    draw(tlL, [0.9, 0.05, 0.05], 0.95);
+    const tlR=m4.mul(m4.translation(carX - Math.cos(-carAngle)*(carLength/2), 0.55, carZ + Math.sin(-carAngle)*(carLength/2) + wlrOffset), m4.mul(rY, m4.scale(0.15, 0.2, 0.2)));
+    draw(tlR, [0.9, 0.05, 0.05], 0.95);
 
     // Shadow
-    const shadowM=m4.mul(m4.translation(carX,0.01,carZ),m4.scale(3.8,0.01,1.8));
-    draw(shadowM,[0,0,0],0.9);
+    const shadowM=m4.mul(m4.translation(carX, 0.01, carZ), m4.scale(carLength, 0.01, carWidth));
+    draw(shadowM, [0, 0, 0], 0.9);
   }
 }
 
