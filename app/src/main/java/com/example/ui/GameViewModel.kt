@@ -139,6 +139,24 @@ class GameViewModel(
         }
     }
 
+    fun sellHouse(houseId: String, name: String, refundPrice: Double) {
+        viewModelScope.launch {
+            repository.sellHouse(houseId, name, refundPrice)
+        }
+    }
+
+    fun sellFurniture(furnitureId: String, name: String, refundPrice: Double) {
+        viewModelScope.launch {
+            repository.sellFurniture(furnitureId, name, refundPrice)
+        }
+    }
+
+    fun sellCar(carId: String, name: String, refundPrice: Double) {
+        viewModelScope.launch {
+            repository.sellCar(carId, name, refundPrice)
+        }
+    }
+
     fun updateLanguage(lang: String) {
         viewModelScope.launch {
             val currentSettings = repository.getOrInitSettings()

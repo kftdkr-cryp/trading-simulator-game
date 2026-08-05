@@ -1277,4 +1277,76 @@ class GameRepository(private val db: AppDatabase) {
         val settings = getOrInitSettings()
         updateSettings(settings.copy(outroSeen = true))
     }
+
+    suspend fun sellHouse(houseId: String, name: String, refundPrice: Double) = withContext(Dispatchers.IO) {
+        val player = traderDao.getTraderById("player") ?: return@withContext
+        val settings = getOrInitSettings()
+        if (settings.currentHouseId == houseId) {
+            val newCash = player.cash + refundPrice
+            traderDao.updateTrader(player.copy(cash = newCash))
+            updateSettings(settings.copy(currentHouseId = "kiralik_kotu"))
+            newsDao.insertNews(
+                NewsLog(
+                    timestamp = System.currentTimeMillis(),
+                    traderName = "Siz (Kullanıcı)",
+                    message = "Evinizi sattınız: '$name'! Geri Ödeme: $${String.format("%.2f", refundPrice)} 🏠💰",
+                    symbol = "GENEL",
+                    isSystemNews = false
+                )
+            )
+        }
+    }
+
+    suspend fun sellFurniture(furnitureId: String, name: String, refundPrice: Double) = withContext(Dispatchers.IO) {
+        val player = traderDao.getTraderById("player") ?: return@withContext
+        val settings = getOrInitSettings()
+        val currentFurniture = settings.furnitureBought.split(",").filter { it.isNotEmpty() }.toMutableList()
+        if (currentFurniture.contains(furnitureId)) {
+            currentFurniture.remove(furnitureId)
+            val newCash = player.cash + refundPrice
+            traderDao.updateTrader(player.copy(cash = newCash))
+            updateSettings(settings.copy(furnitureBought = currentFurniture.joinToString(",")))
+            newsDao.insertNews(
+                NewsLog(
+                    timestamp = System.currentTimeMillis(),
+                    traderName = "Siz (Kullanıcı)",
+                    message = "Eşyanızı sattınız: '$name'! Geri Ödeme: $${String.format("%.2f", refundPrice)} 🛋️💰",
+                    symbol = "GENEL",
+                    isSystemNews = false
+                )
+            )
+        }
+    }
+
+    suspend fun sellCar(carId: String, name: String, refundPrice: Double) = withContext(Dispatchers.IO) {
+        val player = traderDao.getTraderById("player") ?: return@withContext
+        val settings = getOrInitSettings()
+        val currentCars = settings.ownedCars.split(",").filter { it.isNotEmpty() }.toMutableList()
+        if (currentCars.contains(carId)) {
+            currentCars.remove(carId)
+            val newCash = player.cash + refundPrice
+            traderDao.updateTrader(player.copy(cash = newCash))
+            
+            var newActiveCar = settings.activeCarId
+            if (settings.activeCarId == carId) {
+                newActiveCar = if (currentCars.isNotEmpty()) currentCars.first() else null
+            }
+            
+            updateSettings(
+                settings.copy(
+                    ownedCars = currentCars.joinToString(","),
+                    activeCarId = newActiveCar
+                )
+            )
+            newsDao.insertNews(
+                NewsLog(
+                    timestamp = System.currentTimeMillis(),
+                    traderName = "Siz (Kullanıcı)",
+                    message = "Arabanızı sattınız: '$name'! Geri Ödeme: $${String.format("%.2f", refundPrice)} 🚗💰",
+                    symbol = "GENEL",
+                    isSystemNews = false
+                )
+            )
+        }
+    }
 }

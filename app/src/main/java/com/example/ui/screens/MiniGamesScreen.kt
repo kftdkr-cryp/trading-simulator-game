@@ -119,17 +119,22 @@ fun MiniGamesScreen(viewModel: GameViewModel) {
                         Tab(
                             selected = subTab == 0,
                             onClick = { subTab = 0 },
-                            text = { Text(if (lang == "TR") "İŞ BUL" else "JOBS", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            text = { Text(if (lang == "TR") "İŞ BUL" else "JOBS", fontWeight = FontWeight.Bold, fontSize = 10.sp) }
                         )
                         Tab(
                             selected = subTab == 1,
                             onClick = { subTab = 1 },
-                            text = { Text(if (lang == "TR") "EVİM" else "MY HOUSE", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            text = { Text(if (lang == "TR") "EVİM" else "MY HOUSE", fontWeight = FontWeight.Bold, fontSize = 10.sp) }
                         )
                         Tab(
                             selected = subTab == 2,
                             onClick = { subTab = 2 },
-                            text = { Text(if (lang == "TR") "GARAJ" else "GARAGE", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            text = { Text(if (lang == "TR") "GARAJ" else "GARAGE", fontWeight = FontWeight.Bold, fontSize = 10.sp) }
+                        )
+                        Tab(
+                            selected = subTab == 3,
+                            onClick = { subTab = 3 },
+                            text = { Text(if (lang == "TR") "MÜLKLERİM" else "ASSETS", fontWeight = FontWeight.Bold, fontSize = 10.sp) }
                         )
                     }
 
@@ -154,6 +159,15 @@ fun MiniGamesScreen(viewModel: GameViewModel) {
                             onBuyCar = { id, name, price -> viewModel.buyCar(id, name, price) },
                             onSelectActiveCar = { id -> viewModel.selectActiveCar(id) },
                             onStartDrive = { activeGameId = "driver" }
+                        )
+                        3 -> MyAssetsTab(
+                            currentHouseId = currentHouseId,
+                            furnitureBought = furnitureBought,
+                            ownedCars = ownedCars,
+                            lang = lang,
+                            onSellHouse = { id, name, refund -> viewModel.sellHouse(id, name, refund) },
+                            onSellFurniture = { id, name, refund -> viewModel.sellFurniture(id, name, refund) },
+                            onSellCar = { id, name, refund -> viewModel.sellCar(id, name, refund) }
                         )
                     }
                 }
@@ -1659,6 +1673,323 @@ fun DrivingSimulator(
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Text(text = if (lang == "TR") "SAĞ ▶" else "RIGHT ▶", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MyAssetsTab(
+    currentHouseId: String,
+    furnitureBought: String,
+    ownedCars: String,
+    lang: String,
+    onSellHouse: (String, String, Double) -> Unit,
+    onSellFurniture: (String, String, Double) -> Unit,
+    onSellCar: (String, String, Double) -> Unit
+) {
+    val furnitureList = furnitureBought.split(",").filter { it.isNotEmpty() }
+    val carsList = ownedCars.split(",").filter { it.isNotEmpty() }
+
+    // Constants & prices mapping for calculating total net wealth value & display names
+    val houseDetails = when (currentHouseId) {
+        "satinal_rezidans" -> Pair(if (lang == "TR") "🏙️ Lüks Rezidans" else "🏙️ Luxury Condo", 15000.0)
+        "satinal_villa" -> Pair(if (lang == "TR") "🏰 Ultra Malikane" else "🏰 Ultra Villa", 100000.0)
+        "kiralik_orta" -> Pair(if (lang == "TR") "🏢 Şehir İçi Apartman (Kiralık)" else "🏢 City Apartment (Rented)", 0.0)
+        else -> Pair(if (lang == "TR") "🏚️ Gecekondu (Kiralık)" else "🏚️ Slum Shack (Rented)", 0.0)
+    }
+
+    val furnitureMap = mapOf(
+        "lux_bed" to Pair(if (lang == "TR") "🛏️ Lüks Ortopedik Yatak" else "🛏️ Luxury Orthopedic Bed", 400.0),
+        "giant_tv" to Pair(if (lang == "TR") "📺 Dev Plazma Smart TV" else "📺 Giant Smart Plasma TV", 1200.0),
+        "leather_sofa" to Pair(if (lang == "TR") "🛋️ Siyah Deri Koltuk Takımı" else "🛋️ Elegant Leather Sofa", 2500.0),
+        "mining_rig" to Pair(if (lang == "TR") "⚡ Mining Rig (+ $150 Pasif Gelir!)" else "⚡ Crypto Mining Rig (+ $150 Passive Income!)", 5000.0)
+    )
+
+    val carMap = mapOf(
+        "rust_bucket" to Pair(if (lang == "TR") "🚗 Paslı Tofaş Şase (Murat 124)" else "🚗 Rust Murat 124", 800.0),
+        "tofas_sahin" to Pair(if (lang == "TR") "🚘 Modifiyeli Tofaş Şahin" else "🚘 Tuned Tofas Sahin", 2500.0),
+        "bmw_m3" to Pair(if (lang == "TR") "🏎️ Sahibinden Temiz BMW M3" else "🏎️ Clean BMW M3", 25000.0),
+        "tesla_model_s" to Pair(if (lang == "TR") "⚡ Lüks Tesla Model S" else "⚡ Tesla Model S", 75000.0),
+        "ferrari" to Pair(if (lang == "TR") "🐎 Kırmızı Ferrari F40" else "🐎 Red Ferrari F40", 250000.0)
+    )
+
+    // Calculations
+    var totalPurchaseValue = 0.0
+    var totalRefundValue = 0.0
+
+    if (currentHouseId == "satinal_rezidans" || currentHouseId == "satinal_villa") {
+        val originalPrice = houseDetails.second
+        totalPurchaseValue += originalPrice
+        totalRefundValue += originalPrice * 0.85
+    }
+
+    furnitureList.forEach { id ->
+        furnitureMap[id]?.let {
+            totalPurchaseValue += it.second
+            totalRefundValue += it.second * 0.85
+        }
+    }
+
+    carsList.forEach { id ->
+        carMap[id]?.let {
+            totalPurchaseValue += it.second
+            totalRefundValue += it.second * 0.85
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Summary Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF101524)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF1E2A44), RoundedCornerShape(16.dp))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = if (lang == "TR") "💼 VARLIK ÖZETİM" else "💼 ASSETS SUMMARY",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFC107)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = if (lang == "TR") "Maddi Değer (Alış)" else "Book Value (Purchase)",
+                                color = Color.Gray,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = "$${String.format("%,.2f", totalPurchaseValue)}",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = if (lang == "TR") "Geri Ödeme Değeri (%85)" else "Liquid Refund Value (85%)",
+                                color = Color.Gray,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = "$${String.format("%,.2f", totalRefundValue)}",
+                                color = Color(0xFF00E676),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (lang == "TR") 
+                            "* Mülkler, araçlar ve ev eşyaları nakit sıkışıklığında %85 bedelle anında satılabilir."
+                            else "* Properties, cars, and furniture can be instantly sold for an 85% cash refund in case of margin call or cash crunch.",
+                        fontSize = 10.sp,
+                        color = Color.LightGray
+                    )
+                }
+            }
+        }
+
+        // Section 1: Houses (Mülkler)
+        item {
+            Text(
+                text = if (lang == "TR") "🏢 GAYRİMENKUL & MÜLKLER" else "🏢 REAL ESTATE & PROPERTIES",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
+
+        item {
+            val isOwned = currentHouseId == "satinal_rezidans" || currentHouseId == "satinal_villa"
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0F1422), RoundedCornerShape(10.dp))
+                    .border(1.dp, Color(0xFF1E283C), RoundedCornerShape(10.dp))
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = houseDetails.first, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    if (isOwned) {
+                        val original = houseDetails.second
+                        val refund = original * 0.85
+                        Text(
+                            text = if (lang == "TR") 
+                                "Alış Bedeli: $${String.format("%,.2f", original)} | Satış Geri Ödemesi: $${String.format("%,.2f", refund)}"
+                                else "Purchase: $${String.format("%,.2f", original)} | Sell Refund: $${String.format("%,.2f", refund)}",
+                            color = Color(0xFF00E676),
+                            fontSize = 11.sp
+                        )
+                    } else {
+                        Text(
+                            text = if (lang == "TR") 
+                                "Satılabilir mülkünüz yok (Mevcut ev kiralık). Emlak ofisinden satın alabilirsiniz."
+                                else "No sellable owned property (Current rented). Buy from Realtor tab.",
+                            color = Color.Gray,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                if (isOwned) {
+                    val original = houseDetails.second
+                    val refund = original * 0.85
+                    Button(
+                        onClick = { onSellHouse(currentHouseId, houseDetails.first, refund) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Text(text = if (lang == "TR") "SAT" else "SELL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Section 2: Cars (Arabalar)
+        item {
+            Text(
+                text = if (lang == "TR") "🚘 SAHİP OLUNAN ARABALAR" else "🚘 OWNED VEHICLES",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
+
+        if (carsList.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0F1422), RoundedCornerShape(10.dp))
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (lang == "TR") "Henüz satın alınmış bir arabanız yok." else "You do not own any cars yet.",
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        } else {
+            items(carsList) { id ->
+                val carInfo = carMap[id]
+                if (carInfo != null) {
+                    val original = carInfo.second
+                    val refund = original * 0.85
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0F1422), RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0xFF1E283C), RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(text = carInfo.first, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (lang == "TR") 
+                                    "Alış: $${String.format("%,.2f", original)} | Satış: $${String.format("%,.2f", refund)}"
+                                    else "Buy: $${String.format("%,.2f", original)} | Sell: $${String.format("%,.2f", refund)}",
+                                color = Color(0xFF00E676),
+                                fontSize = 11.sp
+                            )
+                        }
+                        Button(
+                            onClick = { onSellCar(id, carInfo.first, refund) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text(text = if (lang == "TR") "SAT" else "SELL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 3: Furniture (Eşyalar)
+        item {
+            Text(
+                text = if (lang == "TR") "🛋️ SATIN ALINAN EV EŞYALARI" else "🛋️ OWNED FURNITURE",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
+
+        if (furnitureList.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0F1422), RoundedCornerShape(10.dp))
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (lang == "TR") "Henüz eviniz için eşya satın almadınız." else "You have not purchased any furniture yet.",
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        } else {
+            items(furnitureList) { id ->
+                val fInfo = furnitureMap[id]
+                if (fInfo != null) {
+                    val original = fInfo.second
+                    val refund = original * 0.85
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0F1422), RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0xFF1E283C), RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(text = fInfo.first, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (lang == "TR") 
+                                    "Alış: $${String.format("%,.2f", original)} | Satış: $${String.format("%,.2f", refund)}"
+                                    else "Buy: $${String.format("%,.2f", original)} | Sell: $${String.format("%,.2f", refund)}",
+                                color = Color(0xFF00E676),
+                                fontSize = 11.sp
+                            )
+                        }
+                        Button(
+                            onClick = { onSellFurniture(id, fInfo.first, refund) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text(text = if (lang == "TR") "SAT" else "SELL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
